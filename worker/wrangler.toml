@@ -10,7 +10,7 @@ CLAN_TAG = "GAL"
 # Remplace par l'URL réelle du site une fois en ligne, par exemple :
 #   ALLOWED_ORIGINS = "https://tonpseudo.github.io,http://localhost:5173"
 # Laisser "*" fonctionne mais ouvre le service à n'importe quel site.
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "https://zeldableu.github.io,http://localhost:5173"
 
 [[durable_objects.bindings]]
 name = "PRESENCE"
