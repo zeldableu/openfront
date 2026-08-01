@@ -202,13 +202,14 @@ a { color: var(--accent); }
 .rightRail {
   position: fixed;
   z-index: 12;
-  top: calc((100vh - var(--feed-height) - 8px) / 2);
+  top: 8px;
   right: 14px;
+  bottom: calc(var(--feed-height) + 8px);
   left: auto;
-  transform: translateY(-50%);
   width: calc(var(--logo-safe) - 20px);
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 12px;
 }
 .rallyDock, .teamStats {
@@ -221,6 +222,8 @@ a { color: var(--accent); }
   backdrop-filter: blur(12px);
   box-shadow: 0 16px 34px rgba(0, 0, 0, .28);
 }
+.rallyDock { flex: 0 0 auto; }
+.teamStats { flex: 0 1 auto; }
 .rallyDockHeader {
   display: flex;
   align-items: center;
@@ -1041,7 +1044,92 @@ main {
 
 /* ---------------- Responsive ---------------- */
 
-@media (max-width: 1000px) {
+/* Les écrans 1366/1440 px ont moins de marge latérale : on réduit seulement
+   les gouttières, pas les cartes, afin de conserver trois vraies colonnes. */
+@media (min-width: 1151px) and (max-width: 1500px) {
+  :root { --logo-safe: clamp(340px, 25vw, 380px); }
+}
+
+/* Mode paysage bas (notamment 1366×768 et portables avec barre système).
+   Les deux panneaux restent complets mais se compactent verticalement. */
+@media (max-height: 820px) and (min-width: 1151px) {
+  :root { --feed-height: clamp(155px, 23vh, 180px); }
+  .rightRail { gap: 8px; }
+  .rallyDock, .teamStats { padding: 10px; }
+  .rallyDock { min-height: 88px; }
+  .rallyDockHeader {
+    font-size: 11.5px;
+    letter-spacing: 1px;
+  }
+  .rallyDockHeader strong {
+    min-width: 23px;
+    padding: 1px 7px;
+    font-size: 11.5px;
+  }
+  .rallyWaiting {
+    min-height: 34px;
+    max-height: 64px;
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .rallyHint {
+    margin-top: 5px;
+    font-size: 10px;
+  }
+  .rallyPlayer {
+    min-height: 25px;
+    padding: 4px 8px 4px 9px;
+    font-size: 11px;
+  }
+  .teamStats { padding-bottom: 10px; }
+  .teamStatsHeader > span, .dailyTopTitle > span { font-size: 11.5px; }
+  .teamStatsHeader small, .dailyTopTitle small { font-size: 9.5px; }
+  .rankHero {
+    margin-top: 7px;
+    padding: 7px 9px;
+  }
+  .rankHero strong { font-size: 12px; }
+  .rankHero span { font-size: 8.5px; }
+  .rankHero b { font-size: 29px; }
+  .statsGrid {
+    gap: 5px;
+    margin-top: 7px;
+  }
+  .statCell { padding: 5px 7px; }
+  .statCell span { font-size: 9px; }
+  .statCell strong { font-size: 14px; }
+  .dailyTop {
+    margin-top: 7px;
+    padding-top: 6px;
+  }
+  .dailyTop ol {
+    gap: 3px;
+    margin-top: 5px;
+  }
+  .dailyTop li {
+    grid-template-columns: 21px minmax(0, 1fr) auto;
+    font-size: 10.5px;
+  }
+  .dailyTop li::before { font-size: 13px; }
+  .dailyWorst {
+    margin-top: 7px;
+    padding: 5px 7px;
+  }
+  .dailyWorst > span {
+    margin-bottom: 2px;
+    font-size: 9.5px;
+  }
+  .dailyWorst > div { font-size: 10.5px; }
+}
+
+@media (max-height: 650px) and (min-width: 1151px) {
+  :root { --feed-height: clamp(140px, 23vh, 155px); }
+  .rallyHint { display: none; }
+  .rallyWaiting { max-height: 42px; }
+  .rankHero span { display: none; }
+}
+
+@media (max-width: 1150px) {
   :root { --logo-safe: 0px; }
   .presence { width: 100%; }
   .rightRail { display: none; }
