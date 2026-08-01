@@ -104,6 +104,13 @@ avoir modifié le CSS. Les visiteurs sans map apparaissent dans le panneau centr
 à droite. Cliquer une carte déplace leur pseudo complet sur cette map chez tous
 les navigateurs connectés ; cliquer son propre pseudo annule le choix.
 
+Sous ce panneau, les statistiques GAL affichent le rang mondial, le ratio, les
+points nets de la team (`weightedWins - weightedLosses`), le total des scores
+officiels depuis minuit à Paris et le bilan du jour. Le top 3 et le pire
+contributeur sont eux aussi strictement journaliers. La contribution
+individuelle partage le score de chaque partie entre les joueurs GAL qui y ont
+participé.
+
 ## Ce que le flux public ne permet pas
 
 Le WebSocket d'OpenFront ne publie **que** le nombre de joueurs connectés par lobby

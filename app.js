@@ -503,6 +503,7 @@ function updateCard(card, g) {
 const PRESENCE_KEY = "of.pseudo";
 const CLIENT_ID_KEY = "of.client-id";
 const HEARTBEAT_MS = 20000;
+const STATS_REFRESH_MS = 5 * 60 * 1000;
 const FEED_TARGET = 25;
 const FEED_MAX_PAGES = 5;
 
@@ -750,6 +751,225 @@ function renderPresence() {
   renderRallyDock();
 }
 
+/* ---------------- Statistiques GAL ---------------- */
+
+function parisDayStart(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  });
+  const values = value => Object.fromEntries(
+    formatter.formatToParts(value)
+      .filter(part => part.type !== "literal")
+      .map(part => [part.type, Number(part.value)]),
+  );
+  const today = values(date);
+  const target = Date.UTC(today.year, today.month - 1, today.day);
+  const atGuess = values(new Date(target));
+  const represented = Date.UTC(
+    atGuess.year, atGuess.month - 1, atGuess.day,
+    atGuess.hour, atGuess.minute, atGuess.second,
+  );
+  return new Date(target - (represented - target));
+}
+
+async function fetchStatsJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(String(response.status));
+  return response.json();
+}
+
+async function loadDailySessions(base, start, end) {
+  const query = page => new URLSearchParams({
+    start: start.toISOString(),
+    end: end.toISOString(),
+    page: String(page),
+    limit: "50",
+  });
+  const first = await fetchStatsJson(`${base}/sessions?${query(1)}`);
+  const sessions = Array.isArray(first.results) ? [...first.results] : [];
+  const pages = Math.ceil((Number(first.total) || sessions.length) / 50);
+  if (pages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) =>
+        fetchStatsJson(`${base}/sessions?${query(i + 2)}`)),
+    );
+    for (const page of rest) {
+      if (Array.isArray(page.results)) sessions.push(...page.results);
+    }
+  }
+  return sessions;
+}
+
+async function loadDailyClanGames(base, start) {
+  const games = [];
+  let cursor = "";
+  let page = 0;
+  const startMs = start.getTime();
+
+  while (page < 30) {
+    const url = `${base}/games${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await fetchStatsJson(url);
+    const batch = Array.isArray(data.results) ? data.results : [];
+    if (!batch.length) break;
+
+    let reachedYesterday = false;
+    for (const game of batch) {
+      const time = new Date(game.start).getTime();
+      if (Number.isFinite(time) && time >= startMs) games.push(game);
+      else if (Number.isFinite(time)) reachedYesterday = true;
+    }
+
+    cursor = typeof data.nextCursor === "string" ? data.nextCursor : "";
+    page++;
+    if (!cursor || reachedYesterday) break;
+  }
+  return games;
+}
+
+function leaderboardRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.clans)) return data.clans;
+  return [];
+}
+
+async function calculateTeamStats() {
+  const base = apiBase();
+  if (!base) throw new Error("API absente");
+
+  const end = new Date();
+  const start = parisDayStart(end);
+  const [leaderboard, sessions, games] = await Promise.all([
+    fetchStatsJson(`${base}/leaderboard`),
+    loadDailySessions(base, start, end),
+    loadDailyClanGames(base, start),
+  ]);
+
+  const rows = leaderboardRows(leaderboard);
+  const clanTag = clanName().toUpperCase();
+  const clanIndex = rows.findIndex(row =>
+    String(row.clanTag || row.tag || "").toUpperCase() === clanTag);
+  const clan = clanIndex >= 0 ? rows[clanIndex] : {};
+  const scoreByGame = new Map(sessions.map(session => [session.gameId, session]));
+  const contributors = new Map();
+
+  for (const game of games) {
+    const session = scoreByGame.get(game.gameId);
+    const players = Array.isArray(game.clanPlayers) ? game.clanPlayers : [];
+    if (!session || !players.length) continue;
+    const divisor = Math.max(1, Number(session.clanPlayerCount) || players.length);
+    const share = (Number(session.score) || 0) / divisor;
+
+    for (const player of players) {
+      const name = String(player.username || "Joueur GAL");
+      const key = String(player.publicId || name);
+      const row = contributors.get(key) || { name, points: 0, games: 0, wins: 0 };
+      row.points += share;
+      row.games++;
+      if (player.won) row.wins++;
+      contributors.set(key, row);
+    }
+  }
+
+  const ranking = [...contributors.values()]
+    .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name, "fr"));
+  const top = ranking.slice(0, 3);
+  const worst = ranking.length ? ranking[ranking.length - 1] : null;
+  const points = sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0);
+  const wins = sessions.filter(session => session.hasWon).length;
+  const teamPoints = (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0);
+
+  return {
+    rank: clanIndex >= 0 ? clanIndex + 1 : 0,
+    ratio: Number(clan.weightedWLRatio),
+    teamPoints,
+    points,
+    wins,
+    losses: Math.max(0, sessions.length - wins),
+    games: sessions.length,
+    top,
+    worst,
+    updatedAt: end,
+  };
+}
+
+function signedScore(value) {
+  const amount = Number(value) || 0;
+  const number = Math.abs(amount).toLocaleString("fr-FR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${amount > 0 ? "+" : amount < 0 ? "−" : ""}${number}`;
+}
+
+function renderTeamStats(stats) {
+  $("statsRank").textContent = stats.rank ? `#${stats.rank}` : "—";
+  $("statsRankLabel").textContent = stats.rank
+    ? `🏆 GAL est ${stats.rank}${stats.rank === 1 ? "er" : "e"} mondial !`
+    : "🏆 GAL au sommet";
+  $("statsRatio").textContent = Number.isFinite(stats.ratio)
+    ? stats.ratio.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "—";
+
+  const teamPoints = $("statsTeamPoints");
+  teamPoints.textContent = signedScore(stats.teamPoints);
+  teamPoints.className = stats.teamPoints > 0 ? "positive" : stats.teamPoints < 0 ? "negative" : "";
+
+  const points = $("statsDailyPoints");
+  points.textContent = signedScore(stats.points);
+  points.className = stats.points > 0 ? "positive" : stats.points < 0 ? "negative" : "";
+  $("statsWins").textContent = String(stats.wins);
+  $("statsLosses").textContent = String(stats.losses);
+  $("statsGames").textContent = `${stats.games} partie${stats.games === 1 ? "" : "s"}`;
+
+  const top = $("statsTop");
+  top.replaceChildren();
+  if (!stats.top.length) {
+    const item = el("li", "empty");
+    item.append(el("span", "dailyTopName", "Aucune contribution aujourd'hui"));
+    top.append(item);
+  } else {
+    for (const player of stats.top) {
+      const item = el("li");
+      const name = el("span", "dailyTopName", player.name);
+      name.title = `${player.name} · ${player.wins} victoire${player.wins === 1 ? "" : "s"} / ${player.games} parties`;
+      const score = el("strong", `dailyTopPoints${player.points < 0 ? " negative" : ""}`, signedScore(player.points));
+      item.append(name, score);
+      top.append(item);
+    }
+  }
+
+  const worst = $("statsWorst");
+  worst.replaceChildren();
+  if (stats.worst) {
+    const name = el("span", "dailyWorstName", stats.worst.name);
+    name.title = `${stats.worst.name} · ${stats.worst.wins} victoire${stats.worst.wins === 1 ? "" : "s"} / ${stats.worst.games} parties`;
+    const score = el("strong", `dailyWorstPoints${stats.worst.points < 0 ? " negative" : ""}`, signedScore(stats.worst.points));
+    worst.append(name, score);
+  } else {
+    worst.textContent = "Personne pour l'instant 🎉";
+  }
+
+  $("statsUpdated").textContent = `🕒 ${new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit",
+  }).format(stats.updatedAt)}`;
+  $("statsMessage").hidden = true;
+}
+
+async function loadTeamStats() {
+  $("statsUpdated").textContent = "chargement…";
+  try {
+    renderTeamStats(await calculateTeamStats());
+  } catch {
+    $("statsUpdated").textContent = "indisponible";
+    $("statsMessage").textContent = "Impossible de charger les statistiques.";
+    $("statsMessage").hidden = false;
+  }
+}
+
 /* ---------------- Feed des parties du clan ---------------- */
 
 function formatDuration(seconds) {
@@ -953,6 +1173,8 @@ function init() {
   }
 
   initWinsSlider();
+  loadTeamStats();
+  setInterval(loadTeamStats, STATS_REFRESH_MS);
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;

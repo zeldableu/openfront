@@ -26,14 +26,68 @@
     </div>
   </div>
 
-  <aside class="rallyDock" id="rallyDock" aria-labelledby="rallyTitle">
-    <div class="rallyDockHeader">
-      <span id="rallyTitle">Joueurs en attente</span>
-      <strong id="rallyWaitingCount">0</strong>
-    </div>
-    <div class="rallyWaiting" id="rallyWaiting"></div>
-    <p class="rallyHint" id="rallyHint">Entre ton pseudo pour apparaître ici.</p>
-  </aside>
+  <div class="rightRail">
+    <aside class="rallyDock" id="rallyDock" aria-labelledby="rallyTitle">
+      <div class="rallyDockHeader">
+        <span id="rallyTitle">Joueurs en attente</span>
+        <strong id="rallyWaitingCount">0</strong>
+      </div>
+      <div class="rallyWaiting" id="rallyWaiting"></div>
+      <p class="rallyHint" id="rallyHint">Entre ton pseudo pour apparaître ici.</p>
+    </aside>
+
+    <aside class="teamStats" id="teamStats" aria-labelledby="teamStatsTitle">
+      <div class="teamStatsHeader">
+        <span id="teamStatsTitle">🎮 Tableau GAL</span>
+        <small id="statsUpdated">⏳ chargement…</small>
+      </div>
+
+      <div class="rankHero">
+        <div>
+          <strong id="statsRankLabel">🏆 GAL au sommet</strong>
+          <span>Classement mondial</span>
+        </div>
+        <b id="statsRank">—</b>
+      </div>
+
+      <div class="statsGrid">
+        <div class="statCell">
+          <span>⚖️ Ratio</span>
+          <strong id="statsRatio">—</strong>
+        </div>
+        <div class="statCell">
+          <span>⭐ Points team</span>
+          <strong id="statsTeamPoints">—</strong>
+        </div>
+        <div class="statCell wide">
+          <span>🚀 Points du jour</span>
+          <strong id="statsDailyPoints">—</strong>
+        </div>
+        <div class="statCell">
+          <span>✅ Victoires</span>
+          <strong id="statsWins">—</strong>
+        </div>
+        <div class="statCell">
+          <span>❌ Défaites</span>
+          <strong id="statsLosses">—</strong>
+        </div>
+      </div>
+
+      <div class="dailyTop">
+        <div class="dailyTopTitle">
+          <span>🔥 Top du jour</span>
+          <small id="statsGames">— parties</small>
+        </div>
+        <ol id="statsTop"></ol>
+      </div>
+
+      <div class="dailyWorst">
+        <span>💀 Pire du jour</span>
+        <div id="statsWorst">—</div>
+      </div>
+      <p class="statsMessage" id="statsMessage" hidden></p>
+    </aside>
+  </div>
 
   <div class="board" id="board">
     <section class="col">

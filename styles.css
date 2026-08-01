@@ -27,7 +27,8 @@
   --wallpaper-opacity: .85;
 
   --r: 10px;
-  --logo-safe: clamp(340px, 22vw, 390px);
+  --logo-safe: clamp(380px, 23vw, 440px);
+  --feed-height: clamp(185px, 25vh, 235px);
 }
 
 * { box-sizing: border-box; }
@@ -196,17 +197,24 @@ a { color: var(--accent); }
 
 /* ---------------- Rassemblement GAL ---------------- */
 
-/* Le panneau occupe la marge droite laissée libre autour de la grille. */
-.rallyDock {
+/* Les deux panneaux occupent la marge droite et sont centrés dans la hauteur
+   réellement disponible au-dessus du feed. */
+.rightRail {
   position: fixed;
   z-index: 12;
-  top: 50%;
+  top: calc((100vh - var(--feed-height) - 8px) / 2);
   right: 14px;
   left: auto;
   transform: translateY(-50%);
-  width: calc(var(--logo-safe) - 28px);
-  min-height: 92px;
-  padding: 10px;
+  width: calc(var(--logo-safe) - 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rallyDock, .teamStats {
+  width: 100%;
+  min-height: 118px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: rgba(4, 9, 18, .72);
@@ -219,18 +227,18 @@ a { color: var(--accent); }
   justify-content: space-between;
   gap: 10px;
   color: var(--ink-2);
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 750;
   letter-spacing: 1.3px;
   text-transform: uppercase;
 }
 .rallyDockHeader strong {
-  min-width: 22px;
-  padding: 1px 7px;
+  min-width: 27px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent);
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0;
   text-align: center;
 }
@@ -238,14 +246,18 @@ a { color: var(--accent); }
   display: flex;
   align-items: stretch;
   flex-direction: column;
-  min-height: 36px;
-  gap: 5px;
-  margin-top: 8px;
+  min-height: 48px;
+  gap: 7px;
+  margin-top: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-hi) transparent;
 }
 .rallyHint {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -255,17 +267,17 @@ a { color: var(--accent); }
   --player-hue: 205;
   display: inline-flex;
   min-width: 0;
-  min-height: 25px;
+  min-height: 31px;
   align-items: center;
   justify-content: flex-start;
   overflow: hidden;
-  padding: 4px 9px 4px 10px;
+  padding: 6px 11px 6px 12px;
   border: 1px solid hsl(var(--player-hue) 65% 55% / .72);
   border-left-width: 4px;
   border-radius: 7px;
   background: rgba(5, 12, 23, .9);
   color: var(--ink);
-  font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+  font: 700 13px/1.2 ui-sans-serif, system-ui, sans-serif;
   white-space: nowrap;
   text-shadow: 0 1px 4px rgba(0, 0, 0, .65);
   box-shadow: 0 4px 12px rgba(0, 0, 0, .42);
@@ -313,6 +325,214 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   font-size: 10px;
   font-weight: 800;
   box-shadow: 0 4px 12px rgba(0, 0, 0, .42);
+}
+
+/* ---------------- Statistiques GAL ---------------- */
+
+.teamStats {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  padding-bottom: 14px;
+  border-color: rgba(251, 191, 36, .42);
+  background:
+    radial-gradient(circle at 102% -2%, rgba(251, 191, 36, .22), transparent 38%),
+    radial-gradient(circle at -8% 105%, rgba(58, 160, 255, .18), transparent 34%),
+    linear-gradient(150deg, rgba(8, 19, 37, .96), rgba(4, 9, 18, .92));
+  box-shadow: 0 0 28px -17px rgba(251, 191, 36, .85), 0 18px 36px rgba(0, 0, 0, .34);
+}
+.teamStats::before {
+  content: "";
+  position: absolute;
+  inset: 0 15% auto;
+  height: 2px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, var(--warn), var(--accent), transparent);
+  opacity: .85;
+  pointer-events: none;
+}
+.teamStatsHeader, .dailyTopTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.teamStatsHeader > span, .dailyTopTitle > span {
+  color: #ffe08a;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .45px;
+}
+.teamStatsHeader small, .dailyTopTitle small {
+  color: var(--ink-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rankHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, .34);
+  border-radius: 9px;
+  background: linear-gradient(110deg, rgba(251, 191, 36, .16), rgba(58, 160, 255, .12));
+}
+.rankHero > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.rankHero strong {
+  overflow: hidden;
+  color: #ffe08a;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rankHero span {
+  margin-top: 1px;
+  color: var(--ink-3);
+  font-size: 10px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+.rankHero b {
+  flex: 0 0 auto;
+  color: var(--warn);
+  font-size: 36px;
+  line-height: .9;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 16px rgba(251, 191, 36, .45);
+}
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+.statCell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(58, 160, 255, .2);
+  border-radius: 7px;
+  background: rgba(6, 17, 32, .72);
+}
+.statCell.wide {
+  grid-column: 1 / -1;
+  border-color: rgba(52, 211, 153, .28);
+  background: linear-gradient(90deg, rgba(5, 46, 38, .32), rgba(6, 17, 32, .72));
+}
+.statCell span {
+  color: var(--ink-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .45px;
+}
+.statCell strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.statCell strong.positive { color: var(--accent); }
+.statCell strong.negative { color: var(--bad); }
+.dailyTop {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(251, 191, 36, .22);
+}
+.dailyTop ol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dailyTop li {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+.dailyTop li::before {
+  content: "🎖️";
+  font-size: 16px;
+  line-height: 1;
+}
+.dailyTop li:nth-child(1)::before { content: "🥇"; }
+.dailyTop li:nth-child(2)::before { content: "🥈"; }
+.dailyTop li:nth-child(3)::before { content: "🥉"; }
+.dailyTop li.empty {
+  display: block;
+  color: var(--ink-3);
+}
+.dailyTop li.empty::before { display: none; }
+.dailyTopName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dailyTopPoints {
+  color: var(--accent);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dailyTopPoints.negative { color: var(--bad); }
+.dailyWorst {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(248, 113, 113, .28);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(127, 29, 29, .18), rgba(6, 13, 25, .46));
+}
+.dailyWorst > span {
+  display: block;
+  margin-bottom: 3px;
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 800;
+}
+.dailyWorst > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.dailyWorstName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dailyWorstPoints {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dailyWorstPoints.negative { color: var(--bad); }
+.statsMessage {
+  margin: 8px 0 0;
+  color: var(--bad);
+  font-size: 10.5px;
 }
 
 /* ---------------- Les trois colonnes ---------------- */
@@ -575,7 +795,7 @@ main {
 .wins {
   flex: none;
   width: 100%;
-  height: clamp(185px, 25vh, 235px);
+  height: var(--feed-height);
   max-width: none;
   margin: 8px 0 0;
   padding: 9px clamp(14px, 2vw, 30px) 11px;
@@ -773,7 +993,7 @@ main {
 @media (max-width: 1000px) {
   :root { --logo-safe: 0px; }
   .presence { width: 100%; }
-  .rallyDock { display: none; }
+  .rightRail { display: none; }
   .board {
     width: 100%;
     grid-template-columns: repeat(3, minmax(78vw, 1fr));

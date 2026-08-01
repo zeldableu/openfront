@@ -50,6 +50,12 @@ des membres qui n'ont pas encore choisi de lobby. Un clic sur une carte ouvre
 la partie et associe le joueur à ce lobby ; son pseudo apparaît alors sur la
 carte chez tous les navigateurs.
 Le transport local utilise `/presence/ws`, avec `POST /presence` en repli.
+Un second panneau placé juste dessous affiche le rang mondial GAL, le ratio,
+les points nets de la team (`weightedWins - weightedLosses`) et les
+points/victoires/défaites depuis minuit en Europe/Paris. Le top 3 et le pire
+contributeur sont journaliers. Ils répartissent `session.score` à parts égales
+entre les entrées `clanPlayers` de la partie, afin que la somme individuelle
+reste égale au total du clan.
 
 ## Pièges déjà rencontrés — ne pas les réintroduire
 
