@@ -22,6 +22,10 @@ window.TEAM = {
      Exemple : "https://gal-presence.toncompte.workers.dev"            */
   presenceApi: "https://gal-openfront.gal-openfront-worker.workers.dev",
 
+  /* En local, les avatars et les choix de maps passent par Wrangler afin
+     de pouvoir tester sans modifier le Worker déjà en production. */
+  localPresenceApi: "http://127.0.0.1:8787",
+
   /* La page n'a ni header ni réglages : tout le monde voit la même chose.
      Voici cette chose. Laisse tel quel pour afficher tous les lobbies,
      du plus rempli au plus vide.

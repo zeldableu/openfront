@@ -32,12 +32,33 @@ const cache = new Map();
    visiteurs simultanés ne peuvent donc pas écraser la liste de l'autre. */
 const PRESENCE_TTL_MS = 65000;
 
+function cleanMember(input) {
+  const id = String(input.id || "").trim().slice(0, 80);
+  const pseudo = String(input.pseudo || "").trim().slice(0, 24);
+  const gameId = String(input.gameId || "").trim().slice(0, 80);
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(id) || !pseudo) return null;
+  return { id, pseudo, gameId, seenAt: Date.now() };
+}
+
+function publicMembers(members) {
+  return Object.values(members)
+    .sort((a, b) => a.pseudo.localeCompare(b.pseudo, "fr"))
+    .map(({ id, pseudo, gameId }) => ({ id, pseudo, gameId }));
+}
+
 export class PresenceRoom {
   constructor(state) {
     this.state = state;
   }
 
   async fetch(request) {
+    if ((request.headers.get("Upgrade") || "").toLowerCase() === "websocket") {
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.state.acceptWebSocket(server);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Méthode interdite" }), { status: 405 });
     }
@@ -46,22 +67,70 @@ export class PresenceRoom {
     try { body = await request.json(); }
     catch { return new Response(JSON.stringify({ error: "JSON invalide" }), { status: 400 }); }
 
-    const pseudo = String(body.pseudo || "").trim().slice(0, 24);
-    if (!pseudo) {
-      return new Response(JSON.stringify({ error: "Pseudo requis" }), { status: 400 });
+    const member = cleanMember(body);
+    if (!member) {
+      return new Response(JSON.stringify({ error: "Identité invalide" }), { status: 400 });
     }
 
+    const members = await this.upsert(member);
+    return new Response(JSON.stringify(this.payload(members)));
+  }
+
+  async activeMembers() {
     const now = Date.now();
-    const online = await this.state.storage.get("online") || {};
-    for (const [name, seenAt] of Object.entries(online)) {
-      if (now - seenAt > PRESENCE_TTL_MS) delete online[name];
+    const members = await this.state.storage.get("members") || {};
+    for (const [id, member] of Object.entries(members)) {
+      if (!member || now - Number(member.seenAt || 0) > PRESENCE_TTL_MS) delete members[id];
     }
-    online[pseudo] = now;
-    await this.state.storage.put("online", online);
+    return members;
+  }
 
-    return new Response(JSON.stringify({
-      online: Object.keys(online).sort((a, b) => a.localeCompare(b, "fr")),
-    }));
+  async upsert(member) {
+    const members = await this.activeMembers();
+    members[member.id] = member;
+    await this.state.storage.put("members", members);
+    return members;
+  }
+
+  payload(members) {
+    const list = publicMembers(members);
+    return { members: list, online: list.map(member => member.pseudo) };
+  }
+
+  async broadcast() {
+    const payload = JSON.stringify(this.payload(await this.activeMembers()));
+    for (const socket of this.state.getWebSockets()) {
+      try { socket.send(payload); } catch { /* connexion déjà fermée */ }
+    }
+  }
+
+  async webSocketMessage(socket, message) {
+    let body;
+    try { body = JSON.parse(String(message)); }
+    catch { return; }
+    const member = cleanMember(body);
+    if (!member) return;
+    socket.serializeAttachment({ id: member.id });
+    await this.upsert(member);
+    await this.broadcast();
+  }
+
+  async webSocketClose(socket) {
+    const attachment = socket.deserializeAttachment();
+    const id = attachment && attachment.id;
+    if (id) {
+      const stillConnected = this.state.getWebSockets().some(other => {
+        if (other === socket) return false;
+        const data = other.deserializeAttachment();
+        return data && data.id === id;
+      });
+      if (!stillConnected) {
+        const members = await this.activeMembers();
+        delete members[id];
+        await this.state.storage.put("members", members);
+      }
+    }
+    await this.broadcast();
   }
 }
 
@@ -116,9 +185,19 @@ async function callApi(path, { env, auth = false, ttl = 0 } = {}) {
   return body;
 }
 
-function corsHeaders(env, request) {
-  const allowed = (env.ALLOWED_ORIGINS || "*")
+function allowedOrigins(env) {
+  return (env.ALLOWED_ORIGINS || "*")
     .split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function originAllowed(env, request) {
+  const origin = request.headers.get("Origin") || "";
+  const allowed = allowedOrigins(env);
+  return !origin || allowed.includes("*") || allowed.includes(origin);
+}
+
+function corsHeaders(env, request) {
+  const allowed = allowedOrigins(env);
   const origin = request.headers.get("Origin") || "";
   const allow = allowed.includes("*") ? "*"
               : allowed.includes(origin) ? origin
@@ -223,6 +302,14 @@ export default {
       }
 
       // --- Présence partagée entre tous les visiteurs du site ---
+      if (path === "/presence/ws") {
+        if (!originAllowed(env, request)) {
+          return json(JSON.stringify({ error: "Origine interdite" }), env, request, 403);
+        }
+        const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
+        return room.fetch(request);
+      }
+
       if (path === "/presence" && request.method === "POST") {
         const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
         const response = await room.fetch(request);

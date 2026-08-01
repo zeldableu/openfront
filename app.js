@@ -67,9 +67,14 @@ const state = {
   games: new Map(),
   order: [],             // ids, ordre figé (voir orderedGames)
   orderSig: "",
+  clientId: "",
   pseudo: "",
   online: [],
+  members: [],
   presenceError: false,
+  presenceWs: null,
+  presenceReconnect: 0,
+  rallyId: "",
   renderQueued: false,
   domStale: false,
   cardEls: new Map(),
@@ -355,6 +360,12 @@ function render() {
   for (const g of list) (buckets[g.cat] || buckets.special).push(g);
 
   const live = new Set(list.map(g => g.id));
+  if (state.rallyId && !live.has(state.rallyId)) {
+    state.rallyId = "";
+    const self = state.members.find(member => member.id === state.clientId);
+    if (self) self.gameId = "";
+    sendHeartbeat();
+  }
   for (const [id, node] of state.cardEls) {
     if (!live.has(id)) {
       // La carte sortante devient un calque à sa position exacte : elle peut
@@ -412,11 +423,13 @@ function buildCard(g) {
   // Le focus final reste une décision du navigateur, mais on redemande aussitôt
   // le focus pour garder le tableau de lobbies actif quand il l'autorise.
   const open = () => {
+    selectRally(g.id);
     window.open(JOIN_URL(g.id), "_blank", "noopener,noreferrer");
     window.focus();
   };
   card.addEventListener("click", open);
   card.addEventListener("keydown", e => {
+    if (e.target !== card) return;
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
   });
 
@@ -429,7 +442,8 @@ function buildCard(g) {
   img.onerror = () => { img.style.opacity = "0"; };
   const bar = el("div", "cardBar");
   bar.append(el("i"));
-  image.append(img, bar);
+  const rally = el("div", "cardRally");
+  image.append(img, rally, bar);
 
   const text = el("div", "cardText");
   text.append(el("div", "cardTitle"), el("div", "cardMode"), el("div", "badges"));
@@ -463,6 +477,8 @@ function updateCard(card, g) {
   card.querySelector(".cardMode").textContent =
     `${modeLabel(g)} · ${g.difficulty} · ${g.bots} bots`;
 
+  renderCardRally(card.querySelector(".cardRally"), g.id);
+
   const badges = card.querySelector(".badges");
   if (badges.dataset.sig !== g.badges.join("|")) {
     badges.dataset.sig = g.badges.join("|");
@@ -485,6 +501,7 @@ function updateCard(card, g) {
    faire croire à une liste vide. */
 
 const PRESENCE_KEY = "of.pseudo";
+const CLIENT_ID_KEY = "of.client-id";
 const HEARTBEAT_MS = 20000;
 const FEED_TARGET = 25;
 const FEED_MAX_PAGES = 5;
@@ -494,6 +511,21 @@ function loadPseudo() {
 }
 function savePseudo(name) {
   try { localStorage.setItem(PRESENCE_KEY, name); } catch { /* quota */ }
+}
+
+function loadClientId() {
+  try {
+    let id = localStorage.getItem(CLIENT_ID_KEY) || "";
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(id)) {
+      id = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `gal_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+      localStorage.setItem(CLIENT_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return `gal_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  }
 }
 
 function showPseudoForm(show) {
@@ -509,43 +541,199 @@ function setPseudo(name) {
   savePseudo(clean);
   showPseudoForm(false);
   renderPresence();
+  connectPresence();
   sendHeartbeat();
 }
 
 function apiBase() {
-  const url = (window.TEAM && window.TEAM.presenceApi) || "";
+  const team = window.TEAM || {};
+  return String(team.presenceApi || "").replace(/\/+$/, "");
+}
+
+function presenceBase() {
+  const team = window.TEAM || {};
+  const local = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  const url = (local && team.localPresenceApi) || team.presenceApi || "";
   return url.replace(/\/+$/, "");
 }
 
-async function sendHeartbeat() {
-  const base = apiBase();
+function presencePayload() {
+  return {
+    id: state.clientId,
+    pseudo: state.pseudo,
+    gameId: state.rallyId,
+  };
+}
+
+function fallbackMember(name = state.pseudo) {
+  return {
+    id: name === state.pseudo ? state.clientId : `legacy_${hashText(name)}`,
+    pseudo: name,
+    gameId: name === state.pseudo ? state.rallyId : "",
+  };
+}
+
+function applyPresence(data) {
+  if (Array.isArray(data.members)) {
+    state.members = data.members.filter(member => member && member.id && member.pseudo);
+  } else if (Array.isArray(data.online)) {
+    state.members = data.online.filter(Boolean).map(fallbackMember);
+  }
+  state.online = state.members.map(member => member.pseudo);
+  state.presenceError = false;
+  renderPresence();
+  scheduleRender();
+}
+
+function connectPresence() {
+  const base = presenceBase();
   if (!base || !state.pseudo) return;
+  const current = state.presenceWs;
+  if (current && (current.readyState === WebSocket.OPEN || current.readyState === WebSocket.CONNECTING)) return;
+
+  clearTimeout(state.presenceReconnect);
+  let socket;
+  try {
+    const url = `${base.replace(/^http/i, "ws")}/presence/ws`;
+    socket = new WebSocket(url);
+  } catch {
+    state.presenceError = true;
+    renderPresence();
+    return;
+  }
+  state.presenceWs = socket;
+
+  socket.onopen = () => {
+    if (state.presenceWs !== socket) return;
+    state.presenceError = false;
+    socket.send(JSON.stringify(presencePayload()));
+  };
+  socket.onmessage = event => {
+    if (state.presenceWs !== socket) return;
+    try { applyPresence(JSON.parse(event.data)); } catch { /* trame invalide */ }
+  };
+  socket.onerror = () => { try { socket.close(); } catch { /* déjà fermé */ } };
+  socket.onclose = () => {
+    if (state.presenceWs !== socket) return;
+    state.presenceWs = null;
+    state.presenceError = true;
+    renderPresence();
+    state.presenceReconnect = setTimeout(connectPresence, 2200);
+  };
+}
+
+async function sendHeartbeat() {
+  const base = presenceBase();
+  if (!base || !state.pseudo) return;
+
+  const socket = state.presenceWs;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(presencePayload()));
+    return;
+  }
+
   try {
     const r = await fetch(`${base}/presence`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pseudo: state.pseudo }),
+      body: JSON.stringify(presencePayload()),
     });
     if (!r.ok) throw new Error(String(r.status));
-    const data = await r.json();
-    state.online = Array.isArray(data.online) ? data.online : [];
-    state.presenceError = false;
+    applyPresence(await r.json());
   } catch {
     state.presenceError = true;
+    renderPresence();
   }
+}
+
+function selectRally(gameId) {
+  state.rallyId = String(gameId || "");
+  const self = state.members.find(member => member.id === state.clientId);
+  if (self) self.gameId = state.rallyId;
+  else if (state.pseudo) state.members.push(fallbackMember());
   renderPresence();
+  scheduleRender();
+  sendHeartbeat();
+}
+
+function hashText(value) {
+  let hash = 0;
+  for (const char of String(value || "")) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  return Math.abs(hash);
+}
+
+function playerMarker(member, cancelable = false) {
+  const own = member.id === state.clientId;
+  const node = el(cancelable && own ? "button" : "span", `rallyPlayer${own ? " me" : ""}`);
+  if (node.tagName === "BUTTON") node.type = "button";
+  node.style.setProperty("--player-hue", String(hashText(member.id || member.pseudo) % 360));
+  node.title = cancelable && own
+    ? `${member.pseudo} · annuler ma sélection`
+    : member.pseudo;
+  node.setAttribute("aria-label", node.title);
+  node.textContent = member.pseudo;
+  if (cancelable && own) {
+    node.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectRally("");
+    });
+  }
+  return node;
+}
+
+function visibleMembers() {
+  if (state.members.length) return state.members;
+  return state.pseudo ? [fallbackMember()] : [];
+}
+
+function renderCardRally(host, gameId) {
+  const members = visibleMembers().filter(member => member.gameId === gameId);
+  const sig = members.map(member => `${member.id}:${member.pseudo}`).join("|");
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig;
+  host.replaceChildren();
+  for (const member of members.slice(0, 4)) host.append(playerMarker(member, true));
+  if (members.length > 4) host.append(el("span", "cardRallyMore", `+${members.length - 4}`));
+}
+
+function renderRallyDock() {
+  const host = $("rallyWaiting");
+  const members = visibleMembers();
+  const waiting = members.filter(member => !member.gameId);
+  const sig = waiting.map(member => `${member.id}:${member.pseudo}`).join("|");
+  if (host.dataset.sig !== sig) {
+    host.dataset.sig = sig;
+    host.replaceChildren(...waiting.map(member => playerMarker(member)));
+  }
+  $("rallyWaitingCount").textContent = String(waiting.length);
+
+  let hint = "Entre ton pseudo pour apparaître ici.";
+  if (state.pseudo && state.rallyId) {
+    const game = state.games.get(state.rallyId);
+    hint = `Tu rejoins ${game ? game.map : "une map"} · clique ton pseudo pour annuler.`;
+  } else if (state.pseudo && waiting.length) {
+    hint = "Clique une map : ton pseudo apparaîtra dessus.";
+  } else if (state.pseudo) {
+    hint = "Tout le monde a choisi une map.";
+  }
+  $("rallyHint").textContent = hint;
 }
 
 function renderPresence() {
-  if (!state.pseudo) { showPseudoForm(true); return; }
+  if (!state.pseudo) {
+    showPseudoForm(true);
+    renderRallyDock();
+    return;
+  }
   showPseudoForm(false);
 
   const host = $("presenceList");
   host.innerHTML = "";
 
-  const base = apiBase();
+  const base = presenceBase();
   const names = base && !state.presenceError
-    ? state.online
+    ? visibleMembers().map(member => member.pseudo)
     : [state.pseudo];
 
   for (const name of names) {
@@ -559,6 +747,7 @@ function renderPresence() {
   } else if (state.presenceError) {
     host.append(el("span", "presenceNote", "serveur de présence injoignable"));
   }
+  renderRallyDock();
 }
 
 /* ---------------- Feed des parties du clan ---------------- */
@@ -744,6 +933,7 @@ function init() {
   window.TEAM = window.TEAM || {};
   applyBranding();
 
+  state.clientId = loadClientId();
   state.pseudo = loadPseudo();
   renderPresence();
 
@@ -756,7 +946,8 @@ function init() {
     showPseudoForm(true);
   };
 
-  if (apiBase()) {
+  if (presenceBase()) {
+    connectPresence();
     sendHeartbeat();
     setInterval(sendHeartbeat, HEARTBEAT_MS);
   }
@@ -767,7 +958,13 @@ function init() {
     if (document.hidden) return;
     // Le navigateur peut avoir coupé la socket en arrière-plan.
     if (state.status === "off") connect();
+    if (!state.presenceWs) connectPresence();
     if (state.domStale) render();
+  });
+
+  window.addEventListener("pagehide", () => {
+    clearTimeout(state.presenceReconnect);
+    if (state.presenceWs) state.presenceWs.close(1000, "page fermée");
   });
 
   connect();

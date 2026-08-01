@@ -88,12 +88,21 @@ Les chemins sont relatifs, donc un dépôt au nom différent
 
 ## Développement local
 
+Deux terminaux sont nécessaires pour tester le rassemblement partagé :
+
 ```bash
+# Terminal 1, à la racine
 python -m http.server 5173
+
+# Terminal 2
+cd worker
+npx wrangler dev --port 8787 --local
 ```
 
 Puis `http://localhost:5173`. Recharge en vidant le cache (`Ctrl+Shift+R`) après
-avoir modifié le CSS.
+avoir modifié le CSS. Les visiteurs sans map apparaissent dans le panneau centré
+à droite. Cliquer une carte déplace leur pseudo complet sur cette map chez tous
+les navigateurs connectés ; cliquer son propre pseudo annule le choix.
 
 ## Ce que le flux public ne permet pas
 

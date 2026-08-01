@@ -45,6 +45,11 @@ conserver le focus sur le tableau de lobbies.
 
 Une barre de présence en haut demande le pseudo au premier passage, le retient
 en `localStorage` (`of.pseudo`) et le réaffiche aux visites suivantes.
+Dans la marge droite, un panneau centré verticalement montre le pseudo complet
+des membres qui n'ont pas encore choisi de lobby. Un clic sur une carte ouvre
+la partie et associe le joueur à ce lobby ; son pseudo apparaît alors sur la
+carte chez tous les navigateurs.
+Le transport local utilise `/presence/ws`, avec `POST /presence` en repli.
 
 ## Pièges déjà rencontrés — ne pas les réintroduire
 
@@ -114,8 +119,8 @@ la route protégée `/members`, la présence et le préflight CORS ont été
 testés avec succès en production.
 
 Elle expose : `/clan`, `/members`, `/games`, `/sessions`, `/player/{id}`,
-`/player/{id}/games`, `/leaderboard`, `/presence`, `/health`. La présence
-partagée utilise un Durable Object et expire après 65 secondes.
+`/player/{id}/games`, `/leaderboard`, `/presence`, `/presence/ws`, `/health`.
+La présence partagée utilise un Durable Object et expire après 65 secondes.
 
 La page affiche aussi en bas un feed horizontal des 25 dernières parties du
 clan. Le client suit le `nextCursor` opaque de `/games`, fusionne le `score`
@@ -140,10 +145,7 @@ public. Détail vérifié : ce jeton **ne tourne pas**, une seule saisie tient
 
 ## Ce qu'il reste à faire
 
-1. Quand l'URL GitHub Pages sera connue, l'ajouter à `ALLOWED_ORIGINS` dans
-   `worker/wrangler.toml` puis redéployer. Pour l'instant localhost:5173 est
-   autorisé et `presenceApi` pointe déjà vers le Worker.
-2. Construire la page **historique de parties** : récupérer `/members`, puis
+1. Construire la page **historique de parties** : récupérer `/members`, puis
    fusionner les `/public/player/{id}/games` de chaque membre par `gameId`
    pour reconstituer les parties du clan avec qui y était, le résultat, la
    map et la durée. Plus un classement interne.

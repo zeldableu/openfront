@@ -67,6 +67,7 @@ ta passerelle — donc utiliser ton compte de service. Mets l'URL réelle.
 | `GET /player/{id}/games?filter=&type=&cursor=` | idem `/games` | aucune |
 | `GET /leaderboard` | `/public/clans/leaderboard` | aucune |
 | `POST /presence` | Durable Object (expiration après 65 s) | aucune |
+| `WS /presence/ws` | Présence et sélection de lobby en temps réel | aucune |
 | `GET /health` | — | — |
 
 Réponses mises en cache en mémoire : 10 min pour la fiche de clan et le
@@ -76,7 +77,7 @@ les joueurs. Ça évite de marteler leur API à chaque visiteur.
 ## Test local
 
 ```bash
-wrangler dev
+npx wrangler dev --port 8787 --local
 curl http://localhost:8787/health
 curl "http://localhost:8787/members?pageSize=5"
 ```

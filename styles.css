@@ -194,6 +194,127 @@ a { color: var(--accent); }
 }
 .presenceNote { font-size: 11.5px; color: var(--ink-3); align-self: center; }
 
+/* ---------------- Rassemblement GAL ---------------- */
+
+/* Le panneau occupe la marge droite laissée libre autour de la grille. */
+.rallyDock {
+  position: fixed;
+  z-index: 12;
+  top: 50%;
+  right: 14px;
+  left: auto;
+  transform: translateY(-50%);
+  width: calc(var(--logo-safe) - 28px);
+  min-height: 92px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(4, 9, 18, .72);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .28);
+}
+.rallyDockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+}
+.rallyDockHeader strong {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: center;
+}
+.rallyWaiting {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  min-height: 36px;
+  gap: 5px;
+  margin-top: 8px;
+}
+.rallyHint {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rallyPlayer {
+  --player-hue: 205;
+  display: inline-flex;
+  min-width: 0;
+  min-height: 25px;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 4px 9px 4px 10px;
+  border: 1px solid hsl(var(--player-hue) 65% 55% / .72);
+  border-left-width: 4px;
+  border-radius: 7px;
+  background: rgba(5, 12, 23, .9);
+  color: var(--ink);
+  font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .65);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .42);
+  transition: border-color .15s, box-shadow .15s, filter .15s;
+}
+.rallyPlayer.me {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+              0 4px 12px rgba(0, 0, 0, .42);
+}
+button.rallyPlayer { cursor: pointer; }
+button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
+  border-color: var(--bad);
+  filter: brightness(1.12);
+  outline: none;
+}
+
+.cardRally {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 25px;
+}
+.cardRally:empty { display: none; }
+.cardRally .rallyPlayer {
+  max-width: 100%;
+}
+.cardRallyMore {
+  display: inline-flex;
+  min-width: 28px;
+  height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, .4);
+  border-radius: 7px;
+  background: rgba(4, 9, 18, .92);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .42);
+}
+
 /* ---------------- Les trois colonnes ---------------- */
 
 main {
@@ -652,6 +773,7 @@ main {
 @media (max-width: 1000px) {
   :root { --logo-safe: 0px; }
   .presence { width: 100%; }
+  .rallyDock { display: none; }
   .board {
     width: 100%;
     grid-template-columns: repeat(3, minmax(78vw, 1fr));
