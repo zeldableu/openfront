@@ -1,0 +1,7 @@
+wallpaper.png  -> le fond d'écran GAL, déjà en place.
+                  Pour le changer, remplace simplement ce fichier
+                  (garde le même nom), puis recharge avec Ctrl+Shift+R.
+
+logo.png       -> optionnel. Le logo carré affiché en haut à gauche.
+                  Pour l'activer : mets logo: "assets/logo.png"
+                  dans team.config.js (il est à null par défaut).

@@ -1,0 +1,11 @@
+.claude/
+node_modules/
+
+# Donnees locales et caches Cloudflare/Wrangler
+worker/.wrangler/
+worker/.dev.vars*
+
+# Variables locales et secrets
+.env
+.env.*
+!.env.example

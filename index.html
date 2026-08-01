@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lobbies OpenFront</title>
+<meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
+</head>
+<body>
+
+<main>
+  <div class="presence" id="presence">
+    <form class="pseudoForm" id="pseudoForm" hidden>
+      <label for="pseudoInput">Ton pseudo</label>
+      <input type="text" id="pseudoInput" maxlength="24" autocomplete="nickname"
+             placeholder="ton pseudo OpenFront" spellcheck="false">
+      <button class="btn primary" type="submit">Entrer</button>
+    </form>
+
+    <div class="presenceBar" id="presenceBar" hidden>
+      <span class="presenceLabel">En ligne</span>
+      <div class="presenceList" id="presenceList"></div>
+      <button class="btn ghost" id="pseudoEdit" title="Changer de pseudo">Changer</button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <section class="col">
+      <div class="colHeader">Free For All <span class="colCount" id="countFfa">0</span></div>
+      <div class="colCards" id="colFfa"></div>
+    </section>
+    <section class="col">
+      <div class="colHeader">Équipes <span class="colCount" id="countTeam">0</span></div>
+      <div class="colCards" id="colTeam"></div>
+    </section>
+    <section class="col">
+      <div class="colHeader">Spécial <span class="colCount" id="countSpecial">0</span></div>
+      <div class="colCards" id="colSpecial"></div>
+    </section>
+  </div>
+
+  <div class="empty" id="emptyState" hidden>
+    <strong>Aucun lobby ouvert pour le moment.</strong>
+    <span>La liste se met à jour toute seule.</span>
+  </div>
+
+</main>
+
+<section class="wins" id="wins" aria-labelledby="winsTitle">
+  <div class="winsHeader">
+    <div>
+      <h2 id="winsTitle">Dernières parties</h2>
+      <p id="winsStatus">Chargement du feed…</p>
+    </div>
+    <div class="winsControls">
+      <button class="sliderBtn" id="winsPrev" type="button"
+              aria-label="Parties précédentes">‹</button>
+      <button class="sliderBtn" id="winsNext" type="button"
+              aria-label="Parties suivantes">›</button>
+    </div>
+  </div>
+  <div class="winTrack" id="winTrack" tabindex="0"
+       aria-label="Dernières parties de la team"></div>
+</section>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="team.config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

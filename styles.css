@@ -1,0 +1,675 @@
+/* ==================================================================
+   GAL — Lobbies OpenFront
+   L'accent et le fond d'écran sont injectés par app.js depuis
+   team.config.js dans --accent / --wallpaper / --wallpaper-opacity.
+================================================================== */
+
+:root {
+  --accent: #3aa0ff;
+  --accent-ink: #04121f;
+
+  --bg: #050a14;
+  --bg-2: rgba(8, 16, 30, .75);
+  --card: rgba(8, 15, 28, .74);
+  --card-solid: #0b1322;
+  --card-hi: rgba(19, 31, 52, .88);
+  --line: rgba(58, 160, 255, .18);
+  --line-hi: rgba(58, 160, 255, .38);
+
+  --ink: #eaf2ff;
+  --ink-2: #a8bcd8;
+  --ink-3: #7590b3;
+
+  --warn: #fbbf24;
+  --bad: #f87171;
+
+  --wallpaper: none;
+  --wallpaper-opacity: .85;
+
+  --r: 10px;
+  --logo-safe: clamp(340px, 22vw, 390px);
+}
+
+* { box-sizing: border-box; }
+
+/* Indispensable : les règles `display:` posées plus bas (.rally, .cards,
+   .empty) l'emportent sinon sur le `display:none` que le navigateur
+   applique à [hidden], et ces blocs restent visibles. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  color: var(--ink);
+  font: 14px/1.45 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Le fond de repli va sur `html` UNIQUEMENT, et `body` reste transparent.
+   Si `body` a lui aussi un fond, celui-ci cesse d'être propagé au canvas
+   et se peint dans la boîte du body, donc par-dessus body::before qui
+   porte le wallpaper : l'image se retrouve masquée par un aplat noir
+   partout où il y a du contenu. */
+html { background: var(--bg); }
+body {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+/* Fond d'écran de la team, fixe, plein écran. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+body::before {
+  z-index: -2;
+  background-image: var(--wallpaper);
+  background-size: cover;
+  background-position: left top;
+  background-repeat: no-repeat;
+  opacity: var(--wallpaper-opacity);
+}
+/* Voile léger : juste ce qu'il faut pour que le texte tienne par-dessus
+   l'image, sans la noyer. */
+body::after {
+  z-index: -1;
+  background: rgba(3, 7, 15, .40);
+}
+
+a { color: var(--accent); }
+
+/* ---------------- Boutons ---------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border: 1px solid var(--line-hi);
+  border-radius: 8px;
+  background: var(--card-hi);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.btn:hover { background: rgba(31, 52, 84, .95); border-color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+.btn.ghost { background: transparent; color: var(--ink-2); }
+.btn.ghost:hover { color: var(--ink); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
+  text-decoration: none;
+  box-shadow: 0 0 16px -4px var(--accent);
+}
+.btn.primary:hover { filter: brightness(1.1); background: var(--accent); }
+
+/* ---------------- Présence ---------------- */
+
+.presence {
+  flex: none;
+  width: calc(100% - var(--logo-safe));
+  max-width: none;
+  margin: 0 0 7px auto;
+}
+
+/* Sur grand écran, la barre occupe la zone libre à droite du logo GAL.
+   Sa marge basse fait commencer les lobbies sous le logo. */
+@media (min-width: 1001px) {
+  .presence {
+    max-width: none;
+    margin-right: 0;
+    margin-bottom: 7px;
+  }
+}
+
+.pseudoForm, .presenceBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(4, 9, 18, .6);
+  backdrop-filter: blur(10px);
+}
+.pseudoForm { border-color: var(--line-hi); }
+.pseudoForm label { font-size: 12.5px; color: var(--ink-2); }
+.pseudoForm input {
+  width: min(240px, 100%);
+  padding: 5px 10px;
+  border: 1px solid var(--line-hi);
+  border-radius: 8px;
+  background: rgba(4, 9, 18, .7);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.pseudoForm input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.presenceLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.presenceList { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.presenceBar .btn { margin-left: auto; font-size: 11.5px; padding: 4px 9px; }
+
+.member {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 16, 30, .7);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.member.me { border-color: var(--accent); color: var(--accent); }
+.onlineDot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.presenceNote { font-size: 11.5px; color: var(--ink-3); align-self: center; }
+
+/* ---------------- Les trois colonnes ---------------- */
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px 0;
+}
+
+.board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  width: min(1320px, calc(100% - var(--logo-safe) - var(--logo-safe)));
+  max-width: 1320px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.colHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 9, 18, .58);
+  backdrop-filter: blur(10px);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.colCount {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.colCards {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* ---------------- Carte ---------------- */
+
+/* Grande carte verticale inspirée de la grille OpenFront : la map occupe
+   tout l'espace flexible, les informations restent dans un bandeau dessous. */
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  align-items: end;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.card:hover, .card:focus-visible {
+  border-color: var(--accent);
+  background: var(--card-hi);
+  box-shadow: 0 12px 30px -22px var(--accent);
+  outline: none;
+}
+.card.entering {
+  animation: cardEnter .32s cubic-bezier(.2, .8, .2, 1) both;
+}
+.card.leaving {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  animation: cardLeave .3s ease both;
+}
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(10px) scale(.97); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes cardLeave {
+  from { opacity: 1; transform: none; filter: none; }
+  to { opacity: 0; transform: translateY(-8px) scale(.96); filter: blur(2px); }
+}
+.card.rallied { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 30px -14px var(--accent); }
+
+.cardImage {
+  position: relative;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 9px 9px 0 0;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.cardImage img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: .85;
+  transition: opacity .2s;
+}
+.card:hover .cardImage img { opacity: 1; }
+
+.cardBar {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 8px;
+  z-index: 2;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(4, 9, 18, .86);
+}
+.cardBar > i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left center;
+  transition: transform .3s ease;
+}
+.cardBar > i.full { background: var(--warn); }
+
+.cardText {
+  grid-column: 1;
+  min-width: 0;
+  padding: 9px 12px 10px;
+}
+.cardTitle {
+  font-weight: 750;
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cardMode {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 118px);
+  margin: 0;
+  pointer-events: none;
+}
+.badges:empty { display: none; }
+.badge {
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  background: rgba(4, 18, 31, .88);
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--accent);
+}
+
+.cardSide {
+  display: contents;
+}
+.players {
+  position: absolute;
+  right: 10px;
+  bottom: 57px;
+  z-index: 3;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(3, 8, 16, .86);
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.players.full { color: var(--warn); }
+.time {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 6px;
+  background: rgba(4, 18, 31, .9);
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.time.soon { color: var(--warn); }
+.time.idle { color: var(--ink-3); }
+
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 60px 20px;
+  text-align: center;
+  border: 1px dashed var(--line-hi);
+  border-radius: var(--r);
+  background: var(--card);
+  backdrop-filter: blur(10px);
+  color: var(--ink-3);
+}
+.empty strong { color: var(--ink-2); font-size: 15px; }
+
+/* ---------------- Feed des dernières parties ---------------- */
+
+.wins {
+  flex: none;
+  width: 100%;
+  height: clamp(185px, 25vh, 235px);
+  max-width: none;
+  margin: 8px 0 0;
+  padding: 9px clamp(14px, 2vw, 30px) 11px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: rgba(4, 9, 18, .66);
+  backdrop-filter: blur(12px);
+}
+.winsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: 1640px;
+  margin-right: auto;
+  margin-left: auto;
+  margin-bottom: 7px;
+}
+.winsHeader h2 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 750;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.winsHeader p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.winsControls { display: flex; gap: 7px; }
+.sliderBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0 0 2px;
+  border: 1px solid var(--line-hi);
+  border-radius: 8px;
+  background: var(--card-hi);
+  color: var(--ink);
+  font: 24px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+.sliderBtn:hover, .sliderBtn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.sliderBtn:active { transform: translateY(1px); }
+
+.winTrack {
+  height: calc(100% - 38px);
+  display: flex;
+  gap: 9px;
+  max-width: 1640px;
+  margin: 0 auto;
+  overflow-x: auto;
+  padding: 1px 1px 7px;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-hi) transparent;
+  overscroll-behavior-x: contain;
+}
+.winTrack:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+.winTrack::-webkit-scrollbar { height: 5px; }
+.winTrack::-webkit-scrollbar-thumb { background: var(--line-hi); border-radius: 999px; }
+
+.winCard {
+  --result: var(--accent);
+  position: relative;
+  flex: 0 0 clamp(260px, 22vw, 350px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card-solid);
+  isolation: isolate;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.winCard.defeat { --result: var(--bad); }
+.winCard.incomplete { --result: var(--warn); }
+.winCard:hover {
+  border-color: var(--result);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px -22px var(--result);
+}
+.winCard img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .58;
+  transition: opacity .2s, transform .25s;
+}
+.winCard:hover img { opacity: .72; transform: scale(1.025); }
+.winCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(3, 7, 15, .1), rgba(3, 7, 15, .92));
+}
+.winPoints {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--result) 70%, transparent);
+  border-radius: 8px;
+  background: rgba(3, 8, 16, .86);
+  color: var(--result);
+  font-size: 12.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+}
+.winPoints.unranked {
+  border-color: var(--line-hi);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+.winCardBody {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 10px;
+}
+.winBadge {
+  align-self: flex-start;
+  margin-bottom: auto;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--result) 60%, transparent);
+  border-radius: 999px;
+  background: rgba(4, 18, 31, .72);
+  color: var(--result);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.winMap { font-size: 17px; font-weight: 750; text-shadow: 0 1px 8px #000; }
+.winMeta, .winPlayers {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 5px #000;
+}
+.winMeta { margin-top: 2px; font-size: 10.5px; color: var(--ink-2); }
+.winPlayers { margin-top: 3px; font-size: 11px; color: var(--ink); }
+.winsMessage {
+  flex: 1 0 100%;
+  padding: 26px 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* ---------------- Toasts ---------------- */
+
+.toasts {
+  position: fixed;
+  right: 18px; bottom: 18px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  padding: 9px 13px;
+  border: 1px solid var(--line-hi);
+  border-radius: 9px;
+  background: rgba(8, 15, 28, .95);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  animation: slideIn .18s ease;
+}
+.toast.ok { border-color: var(--accent); color: var(--accent); }
+.toast.bad { border-color: var(--bad); color: var(--bad); }
+@keyframes slideIn { from { opacity: 0; transform: translateX(16px); } }
+
+/* ---------------- Responsive ---------------- */
+
+@media (max-width: 1000px) {
+  :root { --logo-safe: 0px; }
+  .presence { width: 100%; }
+  .board {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(78vw, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+  }
+  .col { scroll-snap-align: start; }
+}
+@media (max-width: 720px) {
+  main { padding: 8px 9px 0; }
+  .wins { height: 180px; padding: 8px 9px 9px; }
+  .winCard { flex-basis: min(76vw, 290px); }
+}
+@media (max-width: 480px) {
+  .cardTitle { font-size: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.entering, .card.leaving { animation-duration: .01ms; }
+}
