@@ -300,17 +300,22 @@ function applyMessage(msg) {
 
 /* ---------------- Sélection & ordre ---------------- */
 
-/* L'ordre n'est recalculé que lorsque la LISTE des lobbies change, pas à
-   chaque mise à jour des compteurs — celles-ci arrivent deux fois par
-   seconde et feraient danser les cartes en permanence. */
+/* L'ordre initial suit le tri configuré. Ensuite, les cartes déjà visibles
+   gardent leur ordre relatif et les nouveaux lobbies sont ajoutés à la fin :
+   une disparition ne doit jamais provoquer un second tri haut-bas. */
 function orderedGames() {
   const conf = (window.TEAM && window.TEAM.defaultView) || {};
   const sig = [...state.games.keys()].sort().join(",");
 
   if (sig !== state.orderSig) {
-    state.order = [...state.games.values()]
+    const liveIds = new Set(state.games.keys());
+    const survivors = state.order.filter(id => liveIds.has(id));
+    const known = new Set(survivors);
+    const newcomers = [...state.games.values()]
+      .filter(game => !known.has(game.id))
       .sort(SORTS[conf.sort] || SORTS.playersDesc)
       .map(g => g.id);
+    state.order = [...survivors, ...newcomers];
     state.orderSig = sig;
   }
 
@@ -350,6 +355,58 @@ function scheduleRender() {
   setTimeout(() => { state.renderQueued = false; render(); }, 120);
 }
 
+function stopCardMove(node) {
+  const animation = node._moveAnimation;
+  if (!animation) return;
+  node._moveAnimation = null;
+  animation.cancel();
+  node.classList.remove("moving");
+}
+
+/* FLIP : mémorise la position réellement visible avant le nouveau tri, puis
+   ramène chaque survivante vers sa nouvelle cellule par un seul glissement. */
+function snapshotCardPositions(live) {
+  const positions = new Map();
+  for (const [id, node] of state.cardEls) {
+    if (!live.has(id) || !node.isConnected) continue;
+    positions.set(id, node.getBoundingClientRect());
+    stopCardMove(node);
+  }
+  return positions;
+}
+
+function animateCardReflow(positions) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  for (const [id, first] of positions) {
+    const node = state.cardEls.get(id);
+    if (!node || !node.isConnected) continue;
+
+    const last = node.getBoundingClientRect();
+    const dx = first.left - last.left;
+    const dy = first.top - last.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+
+    node.classList.add("moving");
+    const animation = node.animate([
+      { transform: `translate3d(${dx}px, ${dy}px, 0)` },
+      { transform: "translate3d(0, 0, 0)" },
+    ], {
+      duration: 420,
+      easing: "cubic-bezier(.22, 1, .36, 1)",
+    });
+    node._moveAnimation = animation;
+
+    const cleanup = () => {
+      if (node._moveAnimation !== animation) return;
+      node._moveAnimation = null;
+      node.classList.remove("moving");
+    };
+    animation.onfinish = cleanup;
+    animation.oncancel = cleanup;
+  }
+}
+
 function render() {
   // Onglet caché : on saute la mise à jour du DOM, on la rejouera au retour.
   if (document.hidden) { state.domStale = true; return; }
@@ -360,6 +417,7 @@ function render() {
   for (const g of list) (buckets[g.cat] || buckets.special).push(g);
 
   const live = new Set(list.map(g => g.id));
+  const previousPositions = snapshotCardPositions(live);
   if (state.rallyId && !live.has(state.rallyId)) {
     state.rallyId = "";
     const self = state.members.find(member => member.id === state.clientId);
@@ -370,12 +428,15 @@ function render() {
     if (!live.has(id)) {
       // La carte sortante devient un calque à sa position exacte : elle peut
       // s'animer sans occuper une rangée de grille ni pousser les survivantes.
-      const left = node.offsetLeft;
-      const top = node.offsetTop;
-      const width = node.offsetWidth;
-      const height = node.offsetHeight;
+      const host = node.parentElement;
+      const hostRect = host.getBoundingClientRect();
+      const rect = node.getBoundingClientRect();
+      stopCardMove(node);
       Object.assign(node.style, {
-        left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`,
+        left: `${rect.left - hostRect.left}px`,
+        top: `${rect.top - hostRect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
       });
       state.cardEls.delete(id);
       node.classList.add("leaving");
@@ -408,6 +469,8 @@ function render() {
       host.append(fragment);
     }
   }
+
+  animateCardReflow(previousPositions);
 
   $("emptyState").hidden = list.length > 0 || state.status === "connecting";
   $("board").hidden = list.length === 0 && state.status !== "connecting";
