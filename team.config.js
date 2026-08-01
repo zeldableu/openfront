@@ -8,7 +8,7 @@ window.TEAM = {
   name: "GAL",
 
   /* Fond d'écran du site. */
-  background: "8c0f3c44-a4c4-4e02-a4a8-756d27631b9a.png",
+  background: "gal-background-4k.png",
 
   /* Intensité du fond d'écran, de 0 (invisible) à 1 (brut). */
   backgroundOpacity: 1,

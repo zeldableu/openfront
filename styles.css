@@ -535,6 +535,52 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   font-size: 10.5px;
 }
 
+/* ---------------- Chèvre sonore ---------------- */
+
+.goatSound {
+  position: fixed;
+  z-index: 14;
+  left: clamp(38px, 6vw, 110px);
+  bottom: calc(var(--feed-height) - 9px);
+  width: clamp(135px, 10vw, 185px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  filter: drop-shadow(0 13px 13px rgba(0, 0, 0, .55));
+  transform-origin: 50% 92%;
+  transition: filter .18s ease, transform .18s ease;
+}
+.goatSound img {
+  display: block;
+  width: 100%;
+  max-height: clamp(145px, 21vh, 220px);
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+  user-select: none;
+}
+.goatSound:hover,
+.goatSound:focus-visible {
+  filter: drop-shadow(0 16px 16px rgba(0, 0, 0, .6)) brightness(1.08);
+  outline: none;
+  transform: translateY(-4px) scale(1.045);
+}
+.goatSound:focus-visible {
+  filter: drop-shadow(0 0 8px var(--accent)) brightness(1.08);
+}
+.goatSound.playing {
+  animation: goatBounce .48s ease-out;
+}
+@keyframes goatBounce {
+  0% { transform: translateY(0) rotate(0); }
+  28% { transform: translateY(-13px) rotate(-4deg) scale(1.06); }
+  58% { transform: translateY(0) rotate(3deg) scale(.99); }
+  78% { transform: translateY(-5px) rotate(-1deg) scale(1.02); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
 /* ---------------- Les trois colonnes ---------------- */
 
 main {
@@ -994,6 +1040,10 @@ main {
   :root { --logo-safe: 0px; }
   .presence { width: 100%; }
   .rightRail { display: none; }
+  .goatSound {
+    left: 10px;
+    width: 115px;
+  }
   .board {
     width: 100%;
     grid-template-columns: repeat(3, minmax(78vw, 1fr));
@@ -1007,6 +1057,10 @@ main {
   main { padding: 8px 9px 0; }
   .wins { height: 180px; padding: 8px 9px 9px; }
   .winCard { flex-basis: min(76vw, 290px); }
+  .goatSound {
+    bottom: 174px;
+    width: 88px;
+  }
 }
 @media (max-width: 480px) {
   .cardTitle { font-size: 14px; }
@@ -1014,4 +1068,5 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   .card.entering, .card.leaving { animation-duration: .01ms; }
+  .goatSound.playing { animation-duration: .01ms; }
 }

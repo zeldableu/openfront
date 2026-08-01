@@ -1124,6 +1124,26 @@ function initWinsSlider() {
   loadClanWins();
 }
 
+/* ---------------- Chèvre sonore ---------------- */
+
+function initGoatSound() {
+  const button = $("goatSound");
+  const audio = $("goatAudio");
+  if (!button || !audio) return;
+
+  button.addEventListener("click", () => {
+    audio.currentTime = 0;
+    const playback = audio.play();
+
+    button.classList.remove("playing");
+    void button.offsetWidth;
+    button.classList.add("playing");
+
+    if (playback) playback.catch(() => toast("Le son de la chèvre est bloqué par le navigateur.", "bad"));
+  });
+  button.addEventListener("animationend", () => button.classList.remove("playing"));
+}
+
 /* ---------------- Toasts ---------------- */
 
 function toast(msg, kind = "") {
@@ -1173,6 +1193,7 @@ function init() {
   }
 
   initWinsSlider();
+  initGoatSound();
   loadTeamStats();
   setInterval(loadTeamStats, STATS_REFRESH_MS);
 
