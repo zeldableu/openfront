@@ -45,7 +45,39 @@ curl -s -X POST https://api.openfront.io/auth/refresh -H "Origin: https://openfr
 |---|---|---|
 | `/clans/{TAG}/members` | **403** | réservé aux membres du clan |
 | `/clans/{TAG}/games` | **403** | réservé aux membres du clan |
-| `/wN/api/game/{id}` | **403** | — |
+
+## Archives de parties — PUBLIQUES ✅
+
+`GET https://api.openfront.io/game/{gameID}` renvoie **HTTP 200** et
+l'enregistrement complet d'une partie terminée, sans aucune
+authentification. Environ 50 Ko pour un 1v1, 260 Ko pour une partie à 8.
+
+> Correction : une note précédente indiquait cette route en 403. C'était une
+> erreur d'hôte — j'avais interrogé `openfront.io/wN/api/game/{id}` (le
+> worker de jeu) au lieu de `api.openfront.io/game/{id}`.
+
+```
+{ version, gitCommit, domain, subdomain,
+  info: { gameID, config, players[], lobbyCreatedAt, visibleAt,
+          start, end, duration, num_turns, winner, lobbyFillTime },
+  turns: [ { intents: [ { type, clientID, ... } ] } ] }
+```
+
+Chaque joueur porte `clientID`, `username`, `clanTag` et un bloc `stats`
+détaillé (attaques, trahisons, tuiles finales, conquêtes, bateaux, bombes,
+or, unités). `info.winner` étiquette le vainqueur.
+
+Les intentions sont attribuées par `clientID`, donc on sait exactement qui a
+fait quoi. Exemple de répartition sur une partie à 8 joueurs :
+
+```
+attack 1093 · boat 260 · build_unit 200 · spawn 85 · allianceRequest 81
+emoji 50 · donate_troops 42 · cancel_attack 11 · upgrade_structure 7 …
+```
+
+`npm run replay:game -- <gameID>` rejoue l'archive en headless et vérifie
+les hashs. Attention : le champ `gitCommit` compte — rejouer une archive
+ancienne avec du code récent peut désynchroniser.
 
 Le 403 (et non 401) est net : le jeton invité est bien accepté, c'est
 l'autorisation qui manque. La page « Membres » du site officiel ne

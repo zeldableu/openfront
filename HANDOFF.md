@@ -43,8 +43,14 @@ modificateurs notables. Toute la carte est cliquable et navigue vers
 `https://openfront.io/game/{gameID}` dans un nouvel onglet, avec tentative de
 conserver le focus sur le tableau de lobbies.
 
-Une barre de présence en haut demande le pseudo au premier passage, le retient
-en `localStorage` (`of.pseudo`) et le réaffiche aux visites suivantes.
+Une barre de présence en haut propose au premier passage **Se connecter avec
+Discord** (OAuth2, scope `identify`, échange fait par le Worker qui signe une
+session HMAC de 30 jours rangée en `localStorage` sous `of.session`) ou, en
+repli, un simple pseudo retenu sous `of.pseudo`. Les membres connectés par
+Discord portent leur avatar ; les pseudos libres sont marqués comme tels, car
+un pseudo saisi à la main ne prouve rien. Le Worker réécrit lui-même
+l'identité des sessions vérifiées : le navigateur ne peut pas se déclarer
+vérifié, ni réutiliser un identifiant `d_…`.
 Dans la marge droite, un panneau centré verticalement montre le pseudo complet
 des membres qui n'ont pas encore choisi de lobby. Un clic sur une carte ouvre
 la partie et associe le joueur à ce lobby ; son pseudo apparaît alors sur la

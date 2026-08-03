@@ -12,6 +12,11 @@ CLAN_TAG = "GAL"
 # Laisser "*" fonctionne mais ouvre le service à n'importe quel site.
 ALLOWED_ORIGINS = "https://zeldableu.github.io,http://localhost:5173,http://127.0.0.1:5173"
 
+# Identifiant public de l'application Discord (onglet OAuth2 du portail
+# développeur). Ce n'est pas un secret : il apparaît dans l'URL de
+# connexion que voit l'utilisateur.
+DISCORD_CLIENT_ID = "1533820385059930163"
+
 [[durable_objects.bindings]]
 name = "PRESENCE"
 class_name = "PresenceRoom"
@@ -20,6 +25,7 @@ class_name = "PresenceRoom"
 tag = "v1"
 new_sqlite_classes = ["PresenceRoom"]
 
-# Le refreshToken n'est PAS ici : c'est un secret, posé par la commande
-#   npx wrangler secret put OF_REFRESH_TOKEN
-# Ainsi il n'entre jamais dans le dépôt git.
+# Aucun secret ici : le dépôt est public. Ils sont posés par
+#   npx wrangler secret put OF_REFRESH_TOKEN       compte de service OpenFront
+#   npx wrangler secret put DISCORD_CLIENT_SECRET  application Discord
+#   npx wrangler secret put SESSION_SECRET         signature des sessions

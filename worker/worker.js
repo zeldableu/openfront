@@ -11,10 +11,23 @@
         un invité). Le Worker détient le refreshToken d'un compte membre
         et s'en sert pour obtenir un JWT.
 
-   Le refreshToken n'est JAMAIS dans le code : c'est un secret Wrangler.
+     3. Porter la connexion Discord : le secret client OAuth2 ne peut pas
+        vivre dans un site statique. Le Worker fait l'échange du code,
+        lit l'identité Discord, et signe un jeton de session que le site
+        renvoie ensuite à chaque battement de présence.
+
+   Ni le refreshToken ni le secret Discord ne sont dans le code : ce sont
+   des secrets Wrangler.
 ================================================================== */
 
 const API = "https://api.openfront.io";
+const DISCORD_API = "https://discord.com/api/v10";
+
+/* Durée de la session Discord. Au-delà, le site repropose le bouton. */
+const SESSION_TTL_S = 30 * 24 * 3600;
+
+/* Fenêtre de validité du paramètre `state` de l'aller-retour OAuth. */
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 /* Le JWT vit 900 s. On le garde en mémoire un peu moins pour ne pas
    rappeler /auth/refresh à chaque requête. La mémoire d'un Worker n'est
@@ -32,18 +45,109 @@ const cache = new Map();
    visiteurs simultanés ne peuvent donc pas écraser la liste de l'autre. */
 const PRESENCE_TTL_MS = 65000;
 
-function cleanMember(input) {
-  const id = String(input.id || "").trim().slice(0, 80);
-  const pseudo = String(input.pseudo || "").trim().slice(0, 24);
+/* Une identité Discord vérifiée arrive au Durable Object par cet en-tête,
+   posé par le Worker lui-même après contrôle de la signature. Le corps
+   envoyé par le navigateur ne peut donc pas revendiquer `verified`. */
+const IDENTITY_HEADER = "X-GAL-Identity";
+
+/* Préfixe des identifiants issus de Discord. Un invité qui tenterait de
+   se donner un id `d_…` serait refusé : sans cela, il suffirait de copier
+   l'id d'un membre connecté pour usurper sa pastille. */
+const DISCORD_ID_PREFIX = "d_";
+
+function cleanMember(input, identity) {
+  const id = identity ? identity.id : String(input.id || "").trim().slice(0, 80);
+  const pseudo = identity
+    ? identity.pseudo
+    : String(input.pseudo || "").trim().slice(0, 24);
   const gameId = String(input.gameId || "").trim().slice(0, 80);
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(id) || !pseudo) return null;
-  return { id, pseudo, gameId, seenAt: Date.now() };
+  if (!identity && id.startsWith(DISCORD_ID_PREFIX)) return null;
+  return {
+    id,
+    pseudo,
+    gameId,
+    avatar: identity ? identity.avatar || "" : "",
+    verified: Boolean(identity),
+    seenAt: Date.now(),
+  };
 }
 
 function publicMembers(members) {
   return Object.values(members)
     .sort((a, b) => a.pseudo.localeCompare(b.pseudo, "fr"))
-    .map(({ id, pseudo, gameId }) => ({ id, pseudo, gameId }));
+    .map(({ id, pseudo, gameId, avatar, verified }) =>
+      ({ id, pseudo, gameId, avatar: avatar || "", verified: Boolean(verified) }));
+}
+
+/* ---------------- Jeton de session signé ---------------- */
+
+const enc = new TextEncoder();
+
+function b64urlEncode(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlDecode(text) {
+  const padded = text.replace(/-/g, "+").replace(/_/g, "/")
+    .padEnd(Math.ceil(text.length / 4) * 4, "=");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+async function hmacKey(env) {
+  const secret = env.SESSION_SECRET;
+  if (!secret) throw new HttpError(500, "SESSION_SECRET n'est pas configuré");
+  return crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+/* Signe `{payload}.{signature}`. Pas de JWT complet : on n'a besoin ni de
+   l'en-tête d'algorithme ni de l'interopérabilité, et un format réduit
+   laisse moins de place aux confusions d'algorithme. */
+async function signPayload(env, payload) {
+  const body = b64urlEncode(enc.encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign("HMAC", await hmacKey(env), enc.encode(body));
+  return `${body}.${b64urlEncode(new Uint8Array(sig))}`;
+}
+
+/* Comparaison en temps constant : une comparaison `===` sur la signature
+   fuit sa longueur commune, ce qui suffit à la reconstruire octet par
+   octet quand on peut réessayer sans limite. */
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+async function verifyPayload(env, token) {
+  const [body, sig] = String(token || "").split(".");
+  if (!body || !sig) return null;
+  let expected;
+  try {
+    expected = new Uint8Array(
+      await crypto.subtle.sign("HMAC", await hmacKey(env), enc.encode(body)));
+  } catch { return null; }
+  let given;
+  try { given = b64urlDecode(sig); } catch { return null; }
+  if (!timingSafeEqual(expected, given)) return null;
+  try { return JSON.parse(new TextDecoder().decode(b64urlDecode(body))); }
+  catch { return null; }
+}
+
+/* Identité vérifiée portée par un jeton de session, ou null. */
+async function sessionIdentity(env, token) {
+  const claims = await verifyPayload(env, token);
+  if (!claims || !claims.sub) return null;
+  if (Number(claims.exp || 0) * 1000 < Date.now()) return null;
+  return {
+    id: `${DISCORD_ID_PREFIX}${claims.sub}`,
+    pseudo: String(claims.name || "").slice(0, 24),
+    avatar: String(claims.avatar || "").slice(0, 200),
+  };
 }
 
 export class PresenceRoom {
@@ -51,11 +155,24 @@ export class PresenceRoom {
     this.state = state;
   }
 
+  /* L'identité vérifiée est fixée une fois pour toutes au moment de la
+     poignée de main : la socket ne peut pas changer de propriétaire en
+     cours de route. */
+  readIdentity(request) {
+    const raw = request.headers.get(IDENTITY_HEADER);
+    if (!raw) return null;
+    try { return JSON.parse(new TextDecoder().decode(b64urlDecode(raw))); }
+    catch { return null; }
+  }
+
   async fetch(request) {
+    const identity = this.readIdentity(request);
+
     if ((request.headers.get("Upgrade") || "").toLowerCase() === "websocket") {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
+      if (identity) server.serializeAttachment({ id: identity.id, identity });
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -67,7 +184,7 @@ export class PresenceRoom {
     try { body = await request.json(); }
     catch { return new Response(JSON.stringify({ error: "JSON invalide" }), { status: 400 }); }
 
-    const member = cleanMember(body);
+    const member = cleanMember(body, identity);
     if (!member) {
       return new Response(JSON.stringify({ error: "Identité invalide" }), { status: 400 });
     }
@@ -108,9 +225,11 @@ export class PresenceRoom {
     let body;
     try { body = JSON.parse(String(message)); }
     catch { return; }
-    const member = cleanMember(body);
+    const attached = socket.deserializeAttachment();
+    const identity = (attached && attached.identity) || null;
+    const member = cleanMember(body, identity);
     if (!member) return;
-    socket.serializeAttachment({ id: member.id });
+    socket.serializeAttachment({ id: member.id, identity });
     await this.upsert(member);
     await this.broadcast();
   }
@@ -205,9 +324,136 @@ function corsHeaders(env, request) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Vary": "Origin",
   };
+}
+
+/* ---------------- Connexion Discord ---------------- */
+
+/* Ne renvoyer le visiteur que vers une origine de la liste blanche : sans
+   ce contrôle, `?redirect=` transformerait le Worker en redirection
+   ouverte, et le jeton de session partirait chez qui le demande. */
+function safeRedirect(env, target, fallback) {
+  const allowed = allowedOrigins(env);
+  try {
+    const url = new URL(target);
+    // Le fragment est réécrit au retour : on repart d'une URL sans hash.
+    url.hash = "";
+    if (allowed.includes("*") || allowed.includes(url.origin)) return url.toString();
+  } catch { /* URL absente ou invalide */ }
+  return fallback;
+}
+
+function cookieValue(request, name) {
+  const jar = request.headers.get("Cookie") || "";
+  const hit = jar.split(";").map(part => part.trim())
+    .find(part => part.startsWith(`${name}=`));
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : "";
+}
+
+const OAUTH_COOKIE = "gal_oauth_state";
+
+function stateCookie(value, url, maxAge) {
+  const secure = url.protocol === "https:" ? "; Secure" : "";
+  return `${OAUTH_COOKIE}=${encodeURIComponent(value)}; Path=/auth; Max-Age=${maxAge}` +
+         `; HttpOnly; SameSite=Lax${secure}`;
+}
+
+function avatarUrl(user) {
+  if (user.avatar) {
+    return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`;
+  }
+  // Avatar par défaut : Discord le dérive de l'identifiant lui-même.
+  const index = Number((BigInt(user.id) >> 22n) % 6n);
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
+async function discordLogin(env, request, url) {
+  const clientId = env.DISCORD_CLIENT_ID;
+  if (!clientId) throw new HttpError(500, "DISCORD_CLIENT_ID n'est pas configuré");
+
+  const fallback = allowedOrigins(env).find(o => o !== "*") || "/";
+  const back = safeRedirect(env, url.searchParams.get("redirect"), fallback);
+
+  const nonce = crypto.randomUUID();
+  const state = await signPayload(env, { n: nonce, r: back, t: Date.now() });
+
+  const authorize = new URL("https://discord.com/oauth2/authorize");
+  authorize.searchParams.set("client_id", clientId);
+  authorize.searchParams.set("redirect_uri", `${url.origin}/auth/discord/callback`);
+  authorize.searchParams.set("response_type", "code");
+  authorize.searchParams.set("scope", "identify");
+  authorize.searchParams.set("prompt", "none");
+  authorize.searchParams.set("state", state);
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorize.toString(),
+      "Set-Cookie": stateCookie(nonce, url, 600),
+    },
+  });
+}
+
+async function discordCallback(env, request, url) {
+  const denied = url.searchParams.get("error");
+  const code = url.searchParams.get("code");
+  const claims = await verifyPayload(env, url.searchParams.get("state"));
+  const fallback = allowedOrigins(env).find(o => o !== "*") || "/";
+  const back = claims ? safeRedirect(env, claims.r, fallback) : fallback;
+
+  const bounce = hash => new Response(null, {
+    status: 302,
+    headers: { Location: back + hash, "Set-Cookie": stateCookie("", url, 0) },
+  });
+
+  // L'utilisateur a refusé sur l'écran Discord : ce n'est pas une panne.
+  if (denied) return bounce("#discord=denied");
+
+  if (!claims || !code) return bounce("#discord=error");
+  if (Date.now() - Number(claims.t || 0) > OAUTH_STATE_TTL_MS) return bounce("#discord=expired");
+  if (!claims.n || claims.n !== cookieValue(request, OAUTH_COOKIE)) {
+    // Le `state` signé ne prouve rien seul : il faut qu'il vienne du même
+    // navigateur que celui qui a lancé la connexion.
+    return bounce("#discord=error");
+  }
+
+  const clientId = env.DISCORD_CLIENT_ID;
+  const clientSecret = env.DISCORD_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new HttpError(500, "Application Discord non configurée");
+
+  const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: `${url.origin}/auth/discord/callback`,
+    }),
+  });
+  if (!tokenRes.ok) return bounce("#discord=error");
+  const grant = await tokenRes.json();
+
+  const userRes = await fetch(`${DISCORD_API}/users/@me`, {
+    headers: { Authorization: `Bearer ${grant.access_token}` },
+  });
+  if (!userRes.ok) return bounce("#discord=error");
+  const user = await userRes.json();
+
+  // Le jeton d'accès Discord ne sert qu'ici : on ne le garde pas. La
+  // session du site est notre propre jeton signé, limité à ce dont le
+  // site a besoin.
+  const session = await signPayload(env, {
+    sub: user.id,
+    name: String(user.global_name || user.username || "").slice(0, 24),
+    avatar: avatarUrl(user),
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_S,
+  });
+
+  return bounce(`#token=${encodeURIComponent(session)}`);
 }
 
 const json = (body, env, request, status = 200) =>
@@ -215,6 +461,19 @@ const json = (body, env, request, status = 200) =>
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(env, request) },
   });
+
+/* Recopie la requête vers le Durable Object en y ajoutant l'identité
+   vérifiée. L'en-tête est systématiquement retiré d'abord : un visiteur
+   pourrait sinon le poser lui-même et arriver « vérifié ». */
+async function withIdentity(env, request, token) {
+  const headers = new Headers(request.headers);
+  headers.delete(IDENTITY_HEADER);
+  const identity = token ? await sessionIdentity(env, token) : null;
+  if (identity) {
+    headers.set(IDENTITY_HEADER, b64urlEncode(enc.encode(JSON.stringify(identity))));
+  }
+  return new Request(request, { headers });
+}
 
 export default {
   async fetch(request, env) {
@@ -301,18 +560,37 @@ export default {
         return json(await callApi(`/public/clans/leaderboard`, { env, ttl: 600 }), env, request);
       }
 
+      // --- Connexion Discord ---
+      // `await` obligatoire : sans lui, la promesse est renvoyée telle
+      // quelle et son rejet échappe au try/catch. Le Worker plante alors
+      // en 1101 au lieu de rendre une erreur lisible.
+      if (path === "/auth/discord/login") return await discordLogin(env, request, url);
+      if (path === "/auth/discord/callback") return await discordCallback(env, request, url);
+
+      // Permet au site de savoir si son jeton stocké vaut encore quelque
+      // chose, sans attendre le premier battement de présence.
+      if (path === "/auth/me") {
+        const token = url.searchParams.get("token")
+          || (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const identity = await sessionIdentity(env, token);
+        return json(JSON.stringify(identity
+          ? { authenticated: true, ...identity }
+          : { authenticated: false }), env, request, identity ? 200 : 401);
+      }
+
       // --- Présence partagée entre tous les visiteurs du site ---
       if (path === "/presence/ws") {
         if (!originAllowed(env, request)) {
           return json(JSON.stringify({ error: "Origine interdite" }), env, request, 403);
         }
         const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
-        return room.fetch(request);
+        return await room.fetch(await withIdentity(env, request, url.searchParams.get("token")));
       }
 
       if (path === "/presence" && request.method === "POST") {
         const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
-        const response = await room.fetch(request);
+        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const response = await room.fetch(await withIdentity(env, request, token));
         return json(await response.text(), env, request, response.status);
       }
 

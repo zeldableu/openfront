@@ -7,7 +7,9 @@ site statique ne peut pas faire seul :
   donc aucun navigateur ne peut l'appeler depuis notre site ;
 - **les routes réservées aux membres** : `/clans/GAL/members` et
   `/clans/GAL/games` répondent 403 à un invité. Le Worker porte le
-  `refreshToken` d'un compte membre du clan.
+  `refreshToken` d'un compte membre du clan ;
+- **la connexion Discord** : le secret client OAuth2 ne peut pas vivre
+  dans un site statique, sinon n'importe qui le lirait dans le source.
 
 ## Installation
 
@@ -38,6 +40,57 @@ Vérifié : ce jeton **ne tourne pas** — deux appels successifs à
 `/auth/refresh` renvoient le même cookie et le même `sub`. Une seule
 saisie suffit donc, pour 30 jours glissants.
 
+## L'application Discord
+
+Sur [discord.com/developers/applications](https://discord.com/developers/applications) :
+
+1. **New Application**, nomme-la (« GAL Lobbies »).
+2. Onglet **OAuth2** → copie le **Client ID**, mets-le dans
+   `DISCORD_CLIENT_ID` (`wrangler.toml`). Ce n'est pas un secret : il
+   apparaît dans l'URL de connexion.
+3. Toujours dans **OAuth2** → **Redirects**, ajoute exactement :
+
+   ```
+   https://gal-openfront.gal-openfront-worker.workers.dev/auth/discord/callback
+   ```
+
+   Et pour tester en local, ajoute aussi
+   `http://127.0.0.1:8787/auth/discord/callback`. Discord refuse toute
+   URL de retour absente de cette liste, au caractère près.
+4. **Reset Secret** → copie le *Client Secret*, puis pose-le ainsi que la
+   clé de signature des sessions :
+
+   ```bash
+   npx wrangler secret put DISCORD_CLIENT_SECRET
+   npx wrangler secret put SESSION_SECRET
+   ```
+
+   `SESSION_SECRET` est une valeur au hasard, connue de toi seul — elle
+   signe les sessions du site. Par exemple :
+   `node -e "console.log(crypto.randomUUID()+crypto.randomUUID())"`.
+   La changer déconnecte tout le monde ; c'est justement le bouton
+   d'urgence si un jeton fuite.
+
+Le scope demandé est `identify` seul : le site voit l'identifiant, le
+pseudo et l'avatar, rien d'autre. Ni les serveurs, ni le courriel, ni les
+messages. Aucun jeton d'accès Discord n'est conservé — il sert une fois,
+au moment de l'échange, puis est jeté.
+
+## Le déroulé de la connexion
+
+1. Le site envoie le visiteur sur `/auth/discord/login?redirect=<le site>`.
+2. Le Worker pose un cookie anti-CSRF et redirige vers Discord.
+3. Discord renvoie sur `/auth/discord/callback` avec un `code`.
+4. Le Worker vérifie le `state` **et** le cookie, échange le code, lit
+   `/users/@me`, puis signe une session de 30 jours (HMAC-SHA256).
+5. Retour sur le site avec `#token=…`. Le fragment n'est pas transmis au
+   serveur qui héberge la page : le jeton n'apparaît donc ni dans les
+   journaux de GitHub Pages ni dans un en-tête `Referer`. Le site le
+   range dans `localStorage` et nettoie l'URL.
+6. À chaque battement de présence, le jeton repart au Worker qui
+   revérifie sa signature. Le navigateur ne peut pas se déclarer vérifié
+   tout seul : l'identité est réécrite côté serveur.
+
 ## Mise en ligne
 
 ```bash
@@ -66,8 +119,11 @@ ta passerelle — donc utiliser ton compte de service. Mets l'URL réelle.
 | `GET /player/{id}` | `/public/player/{id}` | aucune |
 | `GET /player/{id}/games?filter=&type=&cursor=` | idem `/games` | aucune |
 | `GET /leaderboard` | `/public/clans/leaderboard` | aucune |
-| `POST /presence` | Durable Object (expiration après 65 s) | aucune |
-| `WS /presence/ws` | Présence et sélection de lobby en temps réel | aucune |
+| `GET /auth/discord/login?redirect=` | Redirige vers Discord | aucune |
+| `GET /auth/discord/callback` | Retour Discord, délivre la session | aucune |
+| `GET /auth/me` | Valide un jeton de session (401 sinon) | session |
+| `POST /presence` | Durable Object (expiration après 65 s) | session facultative |
+| `WS /presence/ws?token=` | Présence et sélection de lobby en temps réel | session facultative |
 | `GET /health` | — | — |
 
 Réponses mises en cache en mémoire : 10 min pour la fiche de clan et le
@@ -82,7 +138,13 @@ curl http://localhost:8787/health
 curl "http://localhost:8787/members?pageSize=5"
 ```
 
-## Si le jeton fuit
+## Si le secret Discord fuit
+
+Sur le portail développeur, **Reset Secret**, puis
+`npx wrangler secret put DISCORD_CLIENT_SECRET`. Renouvelle aussi
+`SESSION_SECRET` pour invalider les sessions déjà distribuées.
+
+## Si le jeton OpenFront fuit
 
 Déconnecte le compte de service depuis OpenFront (ça révoque la session),
 récupère le nouveau `refreshToken` et refais `wrangler secret put`.

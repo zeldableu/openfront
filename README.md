@@ -22,8 +22,25 @@ La connexion au serveur ne s'affiche donc plus en permanence. En cas de coupure,
 un bandeau discret apparaît en bas à droite (« Connexion perdue », puis
 « Reconnecté ») : une liste figée ne peut pas passer pour à jour.
 
-Site **100 % statique** : pas de serveur, pas de base de données, pas de compte.
-Les lobbies viennent du WebSocket public d'OpenFront.
+Site **100 % statique** : pas de base de données. Les lobbies viennent du
+WebSocket public d'OpenFront ; seules la présence partagée et la connexion
+Discord passent par le petit Worker Cloudflare de `worker/`.
+
+## Se connecter
+
+Deux façons d'apparaître dans la liste des présents :
+
+- **Discord** (recommandé) : le pseudo et l'avatar viennent du compte, et
+  l'identité est vérifiée côté serveur — personne ne peut se faire passer
+  pour un autre. Le scope demandé est `identify` seul : aucun accès aux
+  serveurs, aux messages ni au courriel.
+- **Un simple pseudo**, comme avant, pour qui n'a pas Discord. Ces
+  pastilles n'ont pas d'avatar et leur infobulle indique « pseudo libre » :
+  un pseudo saisi à la main ne prouve rien.
+
+La session Discord tient 30 jours. Le bouton **Déconnexion** de la barre
+de présence l'efface. La mise en place de l'application Discord est
+décrite dans [`worker/README.md`](worker/README.md).
 
 ## Fichiers
 

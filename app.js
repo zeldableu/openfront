@@ -69,6 +69,13 @@ const state = {
   orderSig: "",
   clientId: "",
   pseudo: "",
+  token: "",              // jeton de session Discord signé par le Worker
+  identity: null,         // { id, pseudo, avatar } quand la connexion est vérifiée
+  teamStats: null,        // dernier calcul de calculateTeamStats()
+  roster: new Map(),      // pseudo OpenFront (minuscules) -> { publicId, username }
+  ofAccount: null,        // { publicId, username } compte OpenFront lié
+  ofStats: null,          // stats personnelles calculées
+  ofStatsFor: "",         // publicId auquel ofStats correspond
   online: [],
   members: [],
   presenceError: false,
@@ -420,7 +427,7 @@ function render() {
   const previousPositions = snapshotCardPositions(live);
   if (state.rallyId && !live.has(state.rallyId)) {
     state.rallyId = "";
-    const self = state.members.find(member => member.id === state.clientId);
+    const self = state.members.find(member => member.id === selfId());
     if (self) self.gameId = "";
     sendHeartbeat();
   }
@@ -565,6 +572,7 @@ function updateCard(card, g) {
 
 const PRESENCE_KEY = "of.pseudo";
 const CLIENT_ID_KEY = "of.client-id";
+const SESSION_KEY = "of.session";
 const HEARTBEAT_MS = 20000;
 const STATS_REFRESH_MS = 5 * 60 * 1000;
 const FEED_TARGET = 25;
@@ -592,10 +600,144 @@ function loadClientId() {
   }
 }
 
-function showPseudoForm(show) {
-  $("pseudoForm").hidden = !show;
-  $("presenceBar").hidden = show;
-  if (show) $("pseudoInput").focus();
+/* ---------------- Connexion Discord ----------------
+
+   Le secret OAuth ne peut pas vivre dans un site statique : c'est le
+   Worker qui fait l'échange, puis nous renvoie ici avec un jeton signé
+   dans le fragment (`#token=…`). Le fragment n'est jamais envoyé au
+   serveur qui héberge la page, contrairement à la query string : il ne
+   se retrouve donc ni dans les journaux de GitHub Pages ni dans un
+   en-tête `Referer`.
+
+   Ce jeton n'est pas relu pour décider de quoi que ce soit de sensible :
+   le Worker revérifie sa signature à chaque battement. Ici, on ne le
+   décode que pour afficher le bon pseudo et la bonne image. */
+
+function decodeSession(token) {
+  const body = String(token || "").split(".")[0];
+  if (!body) return null;
+  try {
+    const padded = body.replace(/-/g, "+").replace(/_/g, "/")
+      .padEnd(Math.ceil(body.length / 4) * 4, "=");
+    const json = decodeURIComponent(
+      atob(padded).split("").map(c => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""));
+    const claims = JSON.parse(json);
+    if (!claims || !claims.sub) return null;
+    if (Number(claims.exp || 0) * 1000 < Date.now()) return null;
+    return {
+      id: `d_${claims.sub}`,
+      pseudo: String(claims.name || "").slice(0, 24),
+      avatar: String(claims.avatar || ""),
+    };
+  } catch { return null; }
+}
+
+function loadSession() {
+  try { return localStorage.getItem(SESSION_KEY) || ""; } catch { return ""; }
+}
+function saveSession(token) {
+  try {
+    if (token) localStorage.setItem(SESSION_KEY, token);
+    else localStorage.removeItem(SESSION_KEY);
+  } catch { /* quota ou stockage refusé */ }
+}
+
+const LOGIN_ERRORS = {
+  denied: "Connexion Discord annulée.",
+  expired: "La demande a expiré, réessaie.",
+  error: "Discord n'a pas répondu correctement, réessaie.",
+};
+
+/* Lit le retour du Worker, puis nettoie l'URL : sans ça un rechargement
+   ou un lien copié ferait circuler le jeton. */
+function consumeAuthHash() {
+  const hash = location.hash.replace(/^#/, "");
+  if (!hash) return "";
+  const params = new URLSearchParams(hash);
+  const token = params.get("token") || "";
+  const problem = params.get("discord") || "";
+  if (!token && !problem) return "";
+
+  history.replaceState(null, "", location.pathname + location.search);
+  if (token) saveSession(token);
+  return problem;
+}
+
+function applySession(token) {
+  const identity = decodeSession(token);
+  if (!identity) {
+    if (token) saveSession("");        // jeton périmé ou illisible
+    state.token = "";
+    state.identity = null;
+    return false;
+  }
+  state.token = token;
+  state.identity = identity;
+  state.pseudo = identity.pseudo;
+  return true;
+}
+
+/* Le jeton peut être refusé par le Worker alors qu'il paraît valide ici
+   (secret de signature changé, session révoquée). Sans ce contrôle, le
+   site afficherait « connecté » pendant que la présence, elle, rejette
+   silencieusement chaque battement. Seul un 401 franc déconnecte : une
+   coupure réseau ne doit pas jeter la session. */
+async function verifySession() {
+  const base = presenceBase();
+  if (!base || !state.token) return;
+  let response;
+  try {
+    response = await fetch(`${base}/auth/me`, {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+  } catch { return; }
+  if (response.status !== 401) return;
+  logout();
+  showLoginNote("Ta session Discord a expiré, reconnecte-toi.");
+}
+
+function loginWithDiscord() {
+  const base = presenceBase();
+  if (!base) {
+    showLoginNote("Le service de connexion n'est pas configuré.");
+    return;
+  }
+  const back = location.origin + location.pathname + location.search;
+  location.href = `${base}/auth/discord/login?redirect=${encodeURIComponent(back)}`;
+}
+
+function logout() {
+  saveSession("");
+  savePseudo("");        // sinon un ancien pseudo libre reprend la main au rechargement
+  saveOfAccount(null);   // le compte OpenFront suit la personne, pas le navigateur
+  state.token = "";
+  state.identity = null;
+  state.pseudo = "";
+  state.ofAccount = null;
+  state.ofStats = null;
+  state.rallyId = "";
+  state.members = [];
+  const socket = state.presenceWs;
+  state.presenceWs = null;
+  if (socket) { try { socket.close(1000, "déconnexion"); } catch { /* déjà fermée */ } }
+  renderPresence();
+  scheduleRender();
+}
+
+function showLoginNote(message) {
+  const note = $("loginNote");
+  note.textContent = message || "";
+  note.hidden = !message;
+}
+
+function showLoginBox(show) {
+  $("loginBox").hidden = !show;
+}
+
+/* Identité utilisée pour la présence : celle de Discord si elle existe,
+   sinon l'identifiant tiré au sort dans ce navigateur. */
+function selfId() {
+  return state.identity ? state.identity.id : state.clientId;
 }
 
 function setPseudo(name) {
@@ -603,7 +745,8 @@ function setPseudo(name) {
   if (!clean) return;
   state.pseudo = clean;
   savePseudo(clean);
-  showPseudoForm(false);
+  showLoginBox(false);
+  if (!state.ofAccount) autoLinkAccount();
   renderPresence();
   connectPresence();
   sendHeartbeat();
@@ -621,19 +764,24 @@ function presenceBase() {
   return url.replace(/\/+$/, "");
 }
 
+/* Quand la session Discord est là, le Worker ignore `id` et `pseudo` et
+   impose ceux du jeton : on les envoie quand même pour le repli pseudo. */
 function presencePayload() {
   return {
-    id: state.clientId,
+    id: selfId(),
     pseudo: state.pseudo,
     gameId: state.rallyId,
   };
 }
 
 function fallbackMember(name = state.pseudo) {
+  const own = name === state.pseudo;
   return {
-    id: name === state.pseudo ? state.clientId : `legacy_${hashText(name)}`,
+    id: own ? selfId() : `legacy_${hashText(name)}`,
     pseudo: name,
-    gameId: name === state.pseudo ? state.rallyId : "",
+    gameId: own ? state.rallyId : "",
+    avatar: own && state.identity ? state.identity.avatar : "",
+    verified: own && Boolean(state.identity),
   };
 }
 
@@ -658,8 +806,12 @@ function connectPresence() {
   clearTimeout(state.presenceReconnect);
   let socket;
   try {
-    const url = `${base.replace(/^http/i, "ws")}/presence/ws`;
-    socket = new WebSocket(url);
+    // Une WebSocket ne permet pas d'en-tête Authorization : le jeton
+    // passe donc en query. Il ne quitte pas le Worker, qui est la seule
+    // origine appelée ici.
+    const url = new URL(`${base.replace(/^http/i, "ws")}/presence/ws`);
+    if (state.token) url.searchParams.set("token", state.token);
+    socket = new WebSocket(url.toString());
   } catch {
     state.presenceError = true;
     renderPresence();
@@ -697,9 +849,11 @@ async function sendHeartbeat() {
   }
 
   try {
+    const headers = { "Content-Type": "application/json" };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
     const r = await fetch(`${base}/presence`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(presencePayload()),
     });
     if (!r.ok) throw new Error(String(r.status));
@@ -712,7 +866,7 @@ async function sendHeartbeat() {
 
 function selectRally(gameId) {
   state.rallyId = String(gameId || "");
-  const self = state.members.find(member => member.id === state.clientId);
+  const self = state.members.find(member => member.id === selfId());
   if (self) self.gameId = state.rallyId;
   else if (state.pseudo) state.members.push(fallbackMember());
   renderPresence();
@@ -726,8 +880,22 @@ function hashText(value) {
   return Math.abs(hash);
 }
 
+/* L'avatar Discord vient du CDN et peut manquer (compte supprimé, réseau
+   coupé) : on le retire alors plutôt que d'afficher une image cassée. */
+function avatarImage(member) {
+  if (!member.avatar) return null;
+  const img = el("img", "playerAvatar");
+  img.src = member.avatar;
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.draggable = false;
+  img.addEventListener("error", () => img.remove());
+  return img;
+}
+
 function playerMarker(member, cancelable = false) {
-  const own = member.id === state.clientId;
+  const own = member.id === selfId();
   const node = el(cancelable && own ? "button" : "span", `rallyPlayer${own ? " me" : ""}`);
   if (node.tagName === "BUTTON") node.type = "button";
   node.style.setProperty("--player-hue", String(hashText(member.id || member.pseudo) % 360));
@@ -735,7 +903,9 @@ function playerMarker(member, cancelable = false) {
     ? `${member.pseudo} · annuler ma sélection`
     : member.pseudo;
   node.setAttribute("aria-label", node.title);
-  node.textContent = member.pseudo;
+  const avatar = avatarImage(member);
+  if (avatar) node.append(avatar);
+  node.append(document.createTextNode(member.pseudo));
   if (cancelable && own) {
     node.addEventListener("click", event => {
       event.preventDefault();
@@ -753,7 +923,7 @@ function visibleMembers() {
 
 function renderCardRally(host, gameId) {
   const members = visibleMembers().filter(member => member.gameId === gameId);
-  const sig = members.map(member => `${member.id}:${member.pseudo}`).join("|");
+  const sig = members.map(member => `${member.id}:${member.pseudo}:${member.avatar || ""}`).join("|");
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.replaceChildren();
@@ -765,14 +935,14 @@ function renderRallyDock() {
   const host = $("rallyWaiting");
   const members = visibleMembers();
   const waiting = members.filter(member => !member.gameId);
-  const sig = waiting.map(member => `${member.id}:${member.pseudo}`).join("|");
+  const sig = waiting.map(member => `${member.id}:${member.pseudo}:${member.avatar || ""}`).join("|");
   if (host.dataset.sig !== sig) {
     host.dataset.sig = sig;
     host.replaceChildren(...waiting.map(member => playerMarker(member)));
   }
   $("rallyWaitingCount").textContent = String(waiting.length);
 
-  let hint = "Entre ton pseudo pour apparaître ici.";
+  let hint = "Connecte-toi pour apparaître ici.";
   if (state.pseudo && state.rallyId) {
     const game = state.games.get(state.rallyId);
     hint = `Tu rejoins ${game ? game.map : "une map"} · clique ton pseudo pour annuler.`;
@@ -785,33 +955,312 @@ function renderRallyDock() {
 }
 
 function renderPresence() {
-  if (!state.pseudo) {
-    showPseudoForm(true);
-    renderRallyDock();
+  showLoginBox(!state.pseudo);
+  renderProfile();
+  renderRallyDock();
+}
+
+/* ---------------- Profil ----------------
+
+   Le compte Discord dit qui est la personne ; il ne dit rien de ses
+   parties. Le pont, c'est `clanPlayers` dans l'historique du clan, seul
+   endroit de l'API qui associe un pseudo OpenFront à son `publicId`
+   (`/members` renvoie les publicId mais jamais les pseudos, et plafonne
+   à 10 par page — inutilisable pour retrouver quelqu'un). */
+
+const OF_ACCOUNT_KEY = "of.account";
+const ROSTER_PAGES = 6;          // ~60 parties de clan : couvre les actifs
+
+function loadOfAccount() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OF_ACCOUNT_KEY) || "null");
+    if (raw && raw.publicId && raw.username) return raw;
+  } catch { /* entrée illisible */ }
+  return null;
+}
+
+function saveOfAccount(account) {
+  try {
+    if (account) localStorage.setItem(OF_ACCOUNT_KEY, JSON.stringify(account));
+    else localStorage.removeItem(OF_ACCOUNT_KEY);
+  } catch { /* quota */ }
+}
+
+/* Recense les joueurs GAL vus dans l'historique récent du clan. */
+async function loadRoster() {
+  const base = apiBase();
+  if (!base || state.roster.size) return;
+  let cursor = "";
+  for (let page = 0; page < ROSTER_PAGES; page++) {
+    let data;
+    try {
+      data = await fetchStatsJson(`${base}/games${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    } catch { break; }
+    for (const game of data.results || []) {
+      for (const player of game.clanPlayers || []) {
+        if (!player.publicId || !player.username) continue;
+        state.roster.set(player.username.toLowerCase(),
+                         { publicId: player.publicId, username: player.username });
+      }
+    }
+    cursor = typeof data.nextCursor === "string" ? data.nextCursor : "";
+    if (!cursor) break;
+  }
+  if (!state.ofAccount) autoLinkAccount();
+  renderProfile();
+}
+
+/* Rapprochement automatique, mais seulement sur une égalité stricte : un
+   à-peu-près afficherait à quelqu'un les statistiques d'un autre. */
+function autoLinkAccount() {
+  if (!state.pseudo) return;
+  const hit = state.roster.get(state.pseudo.trim().toLowerCase());
+  if (hit) setOfAccount(hit, false);
+}
+
+function setOfAccount(account, persist = true) {
+  state.ofAccount = account;
+  if (persist) saveOfAccount(account);
+  state.ofStats = null;
+  renderProfile();
+  if (account) loadOfStats();
+}
+
+/* Les feuilles de l'arbre `stats` portent des tableaux dont le sens n'est
+   documenté nulle part (`hbomb: ["17","24","0"]`). On ne garde donc que
+   `wins` et `losses`, dont la signification ne prête pas à confusion. */
+function sumWinsLosses(node, acc = { wins: 0, losses: 0 }) {
+  if (!node || typeof node !== "object") return acc;
+  if ("wins" in node || "losses" in node) {
+    acc.wins += Number(node.wins) || 0;
+    acc.losses += Number(node.losses) || 0;
+    return acc;
+  }
+  for (const child of Object.values(node)) sumWinsLosses(child, acc);
+  return acc;
+}
+
+/* L'arbre est rangé en `visibilité > mode > difficulté`. Le deuxième
+   niveau est le seul qui compte ici : un winrate global mélange les FFA
+   à 45 joueurs, où gagner est rare par construction, et les parties en
+   équipe. Comparés entre eux, ces chiffres ne veulent rien dire. */
+function careerByMode(tree) {
+  const modes = new Map();
+  if (!tree || typeof tree !== "object") return modes;
+  for (const visibility of Object.values(tree)) {
+    if (!visibility || typeof visibility !== "object") continue;
+    for (const [mode, node] of Object.entries(visibility)) {
+      const sum = sumWinsLosses(node);
+      const row = modes.get(mode) || { mode, wins: 0, losses: 0 };
+      row.wins += sum.wins;
+      row.losses += sum.losses;
+      modes.set(mode, row);
+    }
+  }
+  return modes;
+}
+
+/* Le « meilleur mode » n'a de sens qu'avec assez de parties : sur trois
+   matchs, un 100 % ne dit rien. */
+function bestMode(modes, minimum = 20) {
+  let best = null;
+  for (const row of modes.values()) {
+    const played = row.wins + row.losses;
+    if (played < minimum) continue;
+    const rate = row.wins / played;
+    if (!best || rate > best.rate) best = { ...row, played, rate };
+  }
+  return best;
+}
+
+function currentStreak(games) {
+  if (!games.length) return { kind: "", count: 0 };
+  const first = games[0].result;
+  if (first !== "victory" && first !== "defeat") return { kind: "", count: 0 };
+  let count = 0;
+  for (const game of games) {
+    if (game.result !== first) break;
+    count++;
+  }
+  return { kind: first, count };
+}
+
+function favouriteMap(games) {
+  const tally = new Map();
+  for (const game of games) {
+    if (!game.map) continue;
+    tally.set(game.map, (tally.get(game.map) || 0) + 1);
+  }
+  let best = null;
+  for (const [map, count] of tally) {
+    if (!best || count > best.count) best = { map, count };
+  }
+  return best;
+}
+
+async function loadOfStats() {
+  const base = apiBase();
+  const account = state.ofAccount;
+  if (!base || !account) return;
+  const id = encodeURIComponent(account.publicId);
+  state.ofStatsFor = account.publicId;
+
+  try {
+    const [profile, history] = await Promise.all([
+      fetchStatsJson(`${base}/player/${id}`),
+      fetchStatsJson(`${base}/player/${id}/games`),
+    ]);
+    // Une réponse plus lente que le changement de compte ne doit pas
+    // écraser les stats du compte désormais affiché.
+    if (state.ofStatsFor !== account.publicId) return;
+
+    const games = Array.isArray(history.results) ? history.results : [];
+    const tree = profile && profile.stats;
+    const career = sumWinsLosses(tree);
+    state.ofStats = {
+      career,
+      best: bestMode(careerByMode(tree)),
+      streak: currentStreak(games),
+      favourite: favouriteMap(games),
+      recent: games.length,
+      createdAt: profile && profile.createdAt,
+    };
+  } catch {
+    state.ofStats = { error: true };
+  }
+  renderProfile();
+}
+
+/* Les mêmes classes que le Tableau GAL : le profil doit se lire comme le
+   reste du site, pas comme un panneau rapporté. */
+function statCell(label, value, extra = "") {
+  const cell = el("div", `statCell${extra ? ` ${extra}` : ""}`);
+  cell.append(el("span", null, label), el("strong", null, value));
+  return cell;
+}
+
+function renderProfileLink() {
+  const host = $("profileLink");
+  host.replaceChildren();
+
+  // Le compte lié est déjà affiché sous le pseudo : ici, seul le moyen
+  // d'en changer reste utile.
+  if (state.ofAccount) {
+    const change = el("button", "linkChange", "changer de compte OpenFront");
+    change.type = "button";
+    change.addEventListener("click", () => setOfAccount(null));
+    host.append(change);
     return;
   }
-  showPseudoForm(false);
 
-  const host = $("presenceList");
-  host.innerHTML = "";
-
-  const base = presenceBase();
-  const names = base && !state.presenceError
-    ? visibleMembers().map(member => member.pseudo)
-    : [state.pseudo];
-
-  for (const name of names) {
-    const chip = el("span", "member" + (name === state.pseudo ? " me" : ""));
-    chip.append(el("i", "onlineDot"), document.createTextNode(name));
-    host.append(chip);
+  if (!state.roster.size) {
+    host.append(el("p", "profileHint", "Recherche des joueurs GAL récents…"));
+    return;
   }
 
-  if (!base) {
-    host.append(el("span", "presenceNote", "liste partagée non configurée"));
-  } else if (state.presenceError) {
-    host.append(el("span", "presenceNote", "serveur de présence injoignable"));
+  const names = [...state.roster.values()]
+    .sort((a, b) => a.username.localeCompare(b.username, "fr"));
+  const label = el("label", "linkLabel", "Ton pseudo OpenFront");
+  label.htmlFor = "linkSelect";
+  const select = el("select", "linkSelect");
+  select.id = "linkSelect";
+  select.append(el("option", null, "— choisir —"));
+  for (const entry of names) {
+    const option = el("option", null, entry.username);
+    option.value = entry.publicId;
+    select.append(option);
   }
-  renderRallyDock();
+  select.addEventListener("change", () => {
+    const hit = names.find(entry => entry.publicId === select.value);
+    if (hit) setOfAccount(hit);
+  });
+  host.append(label, select);
+}
+
+function renderProfileStats() {
+  const host = $("profileStats");
+  host.replaceChildren();
+  const hint = $("profileHint");
+
+  if (!state.ofAccount) {
+    hint.textContent = "Lie ton compte pour voir tes statistiques.";
+    hint.hidden = false;
+    return;
+  }
+
+  const daily = state.teamStats && Array.isArray(state.teamStats.ranking)
+    ? state.teamStats.ranking.findIndex(row => row.id === state.ofAccount.publicId)
+    : -1;
+  const mine = daily >= 0 ? state.teamStats.ranking[daily] : null;
+
+  host.append(statCell("🚀 Points du jour", mine ? signedScore(mine.points) : "—"));
+  host.append(statCell("🏅 Rang du jour",
+    mine ? `${daily + 1}ᵉ / ${state.teamStats.ranking.length}` : "—"));
+  host.append(statCell("🎯 Parties du jour",
+    mine ? `${mine.games} · ${mine.wins} V` : "0"));
+
+  const stats = state.ofStats;
+  if (!stats) {
+    hint.textContent = "Chargement de tes statistiques…";
+    hint.hidden = false;
+    return;
+  }
+  if (stats.error) {
+    hint.textContent = "Statistiques OpenFront indisponibles.";
+    hint.hidden = false;
+    return;
+  }
+
+  const { wins, losses } = stats.career;
+  const played = wins + losses;
+  host.append(statCell("🏆 Victoires", String(wins)));
+  host.append(statCell("💀 Défaites", String(losses)));
+  host.append(statCell("⚖️ Winrate",
+    played ? `${Math.round((wins / played) * 100)} %` : "—"));
+
+  if (stats.best) {
+    host.append(statCell("🎖️ Meilleur mode",
+      `${stats.best.mode} · ${Math.round(stats.best.rate * 100)} % sur ${stats.best.played}`,
+      "wide"));
+  }
+  if (stats.streak.count > 1) {
+    const won = stats.streak.kind === "victory";
+    host.append(statCell(won ? "🔥 Série en cours" : "🧊 Série noire",
+      `${stats.streak.count} ${won ? "victoires" : "défaites"}`, "wide"));
+  }
+  if (stats.favourite && stats.favourite.count > 1) {
+    host.append(statCell("🗺️ Map fétiche",
+      `${stats.favourite.map} · ${stats.favourite.count}×`, "wide"));
+  }
+
+  hint.hidden = true;
+}
+
+function renderProfile() {
+  const card = $("profileCard");
+  card.hidden = !state.pseudo;
+  if (!state.pseudo) return;
+
+  const avatar = $("profileAvatar");
+  const url = state.identity && state.identity.avatar;
+  if (url) {
+    if (avatar.src !== url) avatar.src = url;
+    avatar.hidden = false;
+    avatar.onerror = () => { avatar.hidden = true; };
+  } else {
+    avatar.hidden = true;
+  }
+
+  $("profileName").textContent = state.pseudo;
+  const tag = $("profileTag");
+  tag.textContent = state.identity ? "✔ Discord vérifié" : "pseudo libre";
+  tag.classList.toggle("verified", Boolean(state.identity));
+  $("profileAccount").textContent = state.ofAccount
+    ? `⚔️ ${state.ofAccount.username}`
+    : "compte OpenFront non lié";
+
+  renderProfileLink();
+  renderProfileStats();
 }
 
 /* ---------------- Statistiques GAL ---------------- */
@@ -929,7 +1378,7 @@ async function calculateTeamStats() {
     for (const player of players) {
       const name = String(player.username || "Joueur GAL");
       const key = String(player.publicId || name);
-      const row = contributors.get(key) || { name, points: 0, games: 0, wins: 0 };
+      const row = contributors.get(key) || { id: key, name, points: 0, games: 0, wins: 0 };
       row.points += share;
       row.games++;
       if (player.won) row.wins++;
@@ -955,6 +1404,9 @@ async function calculateTeamStats() {
     games: sessions.length,
     top,
     worst,
+    // Le classement complet sert au profil : sans lui, impossible de dire
+    // à quelqu'un où il se situe s'il n'est ni sur le podium ni dernier.
+    ranking,
     updatedAt: end,
   };
 }
@@ -1025,7 +1477,10 @@ function renderTeamStats(stats) {
 async function loadTeamStats() {
   $("statsUpdated").textContent = "chargement…";
   try {
-    renderTeamStats(await calculateTeamStats());
+    const stats = await calculateTeamStats();
+    state.teamStats = stats;
+    renderTeamStats(stats);
+    renderProfile();          // le rang et les points du jour en dépendent
   } catch {
     $("statsUpdated").textContent = "indisponible";
     $("statsMessage").textContent = "Impossible de charger les statistiques.";
@@ -1237,19 +1692,27 @@ function init() {
   applyBranding();
 
   state.clientId = loadClientId();
-  state.pseudo = loadPseudo();
+
+  // L'ordre compte : le retour de Discord (`#token=…`) doit être consommé
+  // avant de décider quelle identité afficher.
+  const problem = consumeAuthHash();
+  if (!applySession(loadSession())) state.pseudo = loadPseudo();
+  showLoginNote(LOGIN_ERRORS[problem] || "");
   renderPresence();
 
+  $("discordLogin").onclick = loginWithDiscord;
+  $("logoutBtn").onclick = logout;
   $("pseudoForm").addEventListener("submit", e => {
     e.preventDefault();
     setPseudo($("pseudoInput").value);
   });
-  $("pseudoEdit").onclick = () => {
-    $("pseudoInput").value = state.pseudo;
-    showPseudoForm(true);
-  };
+
+  state.ofAccount = loadOfAccount();
+  loadRoster();
+  if (state.ofAccount) loadOfStats();
 
   if (presenceBase()) {
+    verifySession();
     connectPresence();
     sendHeartbeat();
     setInterval(sendHeartbeat, HEARTBEAT_MS);
