@@ -73,6 +73,7 @@ const state = {
   identity: null,         // { id, pseudo, avatar } quand la connexion est vérifiée
   teamStats: null,        // dernier calcul de calculateTeamStats()
   roster: new Map(),      // pseudo OpenFront (minuscules) -> { publicId, username }
+  rosterState: "idle",    // idle | loading | ready | error
   ofAccount: null,        // { publicId, username } compte OpenFront lié
   ofStats: null,          // stats personnelles calculées
   ofStatsFor: "",         // publicId auquel ofStats correspond
@@ -986,16 +987,30 @@ function saveOfAccount(account) {
   } catch { /* quota */ }
 }
 
-/* Recense les joueurs GAL vus dans l'historique récent du clan. */
+/* Recense les joueurs GAL vus dans l'historique récent du clan.
+
+   `/games` est la seule route qui donne pseudo et publicId ensemble, et
+   c'est aussi une des rares qui exige le compte de service. Quand ce
+   dernier tombe, l'annuaire est vide : il faut le dire, pas laisser
+   « recherche en cours » tourner indéfiniment. */
 async function loadRoster() {
   const base = apiBase();
-  if (!base || state.roster.size) return;
+  if (!base || state.rosterState === "loading" || state.roster.size) return;
+  state.rosterState = "loading";
+  renderProfile();
+
   let cursor = "";
+  let failed = false;
   for (let page = 0; page < ROSTER_PAGES; page++) {
     let data;
     try {
       data = await fetchStatsJson(`${base}/games${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
-    } catch { break; }
+    } catch {
+      // Une coupure au milieu de la pagination laisse un annuaire partiel,
+      // exploitable ; c'est l'échec dès la première page qui est bloquant.
+      failed = !state.roster.size;
+      break;
+    }
     for (const game of data.results || []) {
       for (const player of game.clanPlayers || []) {
         if (!player.publicId || !player.username) continue;
@@ -1006,6 +1021,8 @@ async function loadRoster() {
     cursor = typeof data.nextCursor === "string" ? data.nextCursor : "";
     if (!cursor) break;
   }
+
+  state.rosterState = failed ? "error" : "ready";
   if (!state.ofAccount) autoLinkAccount();
   renderProfile();
 }
@@ -1154,7 +1171,19 @@ function renderProfileLink() {
   }
 
   if (!state.roster.size) {
-    host.append(el("p", "profileHint", "Recherche des joueurs GAL récents…"));
+    if (state.rosterState === "error") {
+      const note = el("p", "profileHint profileWarn",
+        "Liste des joueurs indisponible : l'historique du clan ne répond pas.");
+      const retry = el("button", "linkChange", "réessayer");
+      retry.type = "button";
+      retry.addEventListener("click", () => {
+        state.rosterState = "idle";
+        loadRoster();
+      });
+      host.append(note, retry);
+    } else {
+      host.append(el("p", "profileHint", "Recherche des joueurs GAL récents…"));
+    }
     return;
   }
 
@@ -1183,8 +1212,11 @@ function renderProfileStats() {
   const hint = $("profileHint");
 
   if (!state.ofAccount) {
-    hint.textContent = "Lie ton compte pour voir tes statistiques.";
-    hint.hidden = false;
+    // Inutile d'inviter à lier un compte quand la liste n'a pas pu être
+    // chargée : le bloc au-dessus explique déjà pourquoi c'est impossible.
+    const blocked = state.rosterState === "error" && !state.roster.size;
+    hint.textContent = blocked ? "" : "Lie ton compte pour voir tes statistiques.";
+    hint.hidden = blocked;
     return;
   }
 
@@ -1481,6 +1513,11 @@ async function loadTeamStats() {
     state.teamStats = stats;
     renderTeamStats(stats);
     renderProfile();          // le rang et les points du jour en dépendent
+    // L'annuaire dépend de la même API : si elle est revenue, on retente.
+    if (state.rosterState === "error") {
+      state.rosterState = "idle";
+      loadRoster();
+    }
   } catch {
     $("statsUpdated").textContent = "indisponible";
     $("statsMessage").textContent = "Impossible de charger les statistiques.";
