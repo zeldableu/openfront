@@ -1386,21 +1386,38 @@ async function calculateTeamStats() {
 
   const end = new Date();
   const start = parisDayStart(end);
-  const [leaderboard, sessions, games] = await Promise.all([
+
+  /* Trois sources indépendantes, dont une seule (l'historique du clan)
+     dépend du compte de service. Un `Promise.all` faisait disparaître le
+     classement mondial et les points du jour parce qu'une troisième
+     requête sans rapport échouait. Chacune tombe désormais seule. */
+  const [lbResult, sessionsResult, gamesResult] = await Promise.allSettled([
     fetchStatsJson(`${base}/leaderboard`),
     loadDailySessions(base, start, end),
     loadDailyClanGames(base, start),
   ]);
+  const leaderboard = lbResult.status === "fulfilled" ? lbResult.value : null;
+  const sessions = sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
+  const games = gamesResult.status === "fulfilled" ? gamesResult.value : null;
 
-  const rows = leaderboardRows(leaderboard);
+  if (!leaderboard && !sessions && !games) throw new Error("aucune source disponible");
+
+  const missing = [];
+  if (!leaderboard) missing.push("classement mondial");
+  if (!sessions) missing.push("scores du jour");
+  if (!games) missing.push("historique du clan");
+
+  const rows = leaderboardRows(leaderboard || {});
   const clanTag = clanName().toUpperCase();
   const clanIndex = rows.findIndex(row =>
     String(row.clanTag || row.tag || "").toUpperCase() === clanTag);
   const clan = clanIndex >= 0 ? rows[clanIndex] : {};
-  const scoreByGame = new Map(sessions.map(session => [session.gameId, session]));
+  const scoreByGame = new Map((sessions || []).map(session => [session.gameId, session]));
   const contributors = new Map();
 
-  for (const game of games) {
+  // La répartition par joueur croise les deux sources : sans l'une, elle
+  // n'existe pas, mais le reste du tableau reste calculable.
+  for (const game of games || []) {
     const session = scoreByGame.get(game.gameId);
     const players = Array.isArray(game.clanPlayers) ? game.clanPlayers : [];
     if (!session || !players.length) continue;
@@ -1422,20 +1439,26 @@ async function calculateTeamStats() {
     .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name, "fr"));
   const top = ranking.slice(0, 3);
   const worst = ranking.length ? ranking[ranking.length - 1] : null;
-  const points = sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0);
-  const wins = sessions.filter(session => session.hasWon).length;
-  const teamPoints = (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0);
+  const points = sessions
+    ? sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0)
+    : null;
+  const wins = sessions ? sessions.filter(session => session.hasWon).length : null;
+  const teamPoints = leaderboard
+    ? (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0)
+    : null;
 
   return {
     rank: clanIndex >= 0 ? clanIndex + 1 : 0,
-    ratio: Number(clan.weightedWLRatio),
+    ratio: leaderboard ? Number(clan.weightedWLRatio) : NaN,
     teamPoints,
     points,
     wins,
-    losses: Math.max(0, sessions.length - wins),
-    games: sessions.length,
+    losses: sessions ? Math.max(0, sessions.length - wins) : null,
+    games: sessions ? sessions.length : null,
     top,
     worst,
+    hasClanHistory: Boolean(games),
+    missing,
     // Le classement complet sert au profil : sans lui, impossible de dire
     // à quelqu'un où il se situe s'il n'est ni sur le podium ni dernier.
     ranking,
@@ -1461,22 +1484,28 @@ function renderTeamStats(stats) {
     ? stats.ratio.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : "—";
 
-  const teamPoints = $("statsTeamPoints");
-  teamPoints.textContent = signedScore(stats.teamPoints);
-  teamPoints.className = stats.teamPoints > 0 ? "positive" : stats.teamPoints < 0 ? "negative" : "";
+  // `null` distingue « pas encore chargé » de « zéro », que `signedScore`
+  // afficherait tous les deux en +0,00 — un mensonge tranquille.
+  const scoreOrDash = (node, value) => {
+    node.textContent = value === null ? "—" : signedScore(value);
+    node.className = value === null ? "" : value > 0 ? "positive" : value < 0 ? "negative" : "";
+  };
+  scoreOrDash($("statsTeamPoints"), stats.teamPoints);
+  scoreOrDash($("statsDailyPoints"), stats.points);
 
-  const points = $("statsDailyPoints");
-  points.textContent = signedScore(stats.points);
-  points.className = stats.points > 0 ? "positive" : stats.points < 0 ? "negative" : "";
-  $("statsWins").textContent = String(stats.wins);
-  $("statsLosses").textContent = String(stats.losses);
-  $("statsGames").textContent = `${stats.games} partie${stats.games === 1 ? "" : "s"}`;
+  $("statsWins").textContent = stats.wins === null ? "—" : String(stats.wins);
+  $("statsLosses").textContent = stats.losses === null ? "—" : String(stats.losses);
+  $("statsGames").textContent = stats.games === null
+    ? "— parties"
+    : `${stats.games} partie${stats.games === 1 ? "" : "s"}`;
 
   const top = $("statsTop");
   top.replaceChildren();
   if (!stats.top.length) {
     const item = el("li", "empty");
-    item.append(el("span", "dailyTopName", "Aucune contribution aujourd'hui"));
+    item.append(el("span", "dailyTopName", stats.hasClanHistory
+      ? "Aucune contribution aujourd'hui"
+      : "Historique du clan indisponible"));
     top.append(item);
   } else {
     for (const player of stats.top) {
@@ -1497,13 +1526,23 @@ function renderTeamStats(stats) {
     const score = el("strong", `dailyWorstPoints${stats.worst.points < 0 ? " negative" : ""}`, signedScore(stats.worst.points));
     worst.append(name, score);
   } else {
-    worst.textContent = "Personne pour l'instant 🎉";
+    worst.textContent = stats.hasClanHistory
+      ? "Personne pour l'instant 🎉"
+      : "—";
   }
 
   $("statsUpdated").textContent = `🕒 ${new Intl.DateTimeFormat("fr-FR", {
     timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit",
   }).format(stats.updatedAt)}`;
-  $("statsMessage").hidden = true;
+
+  // Dire ce qui manque, sinon un « — » isolé passe pour une valeur nulle.
+  const message = $("statsMessage");
+  if (stats.missing && stats.missing.length) {
+    message.textContent = `Indisponible : ${stats.missing.join(", ")}.`;
+    message.hidden = false;
+  } else {
+    message.hidden = true;
+  }
 }
 
 async function loadTeamStats() {
