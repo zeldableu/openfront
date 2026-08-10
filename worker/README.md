@@ -36,9 +36,26 @@ wrangler secret put OF_REFRESH_TOKEN
 Wrangler demande la valeur et la stocke chiffrée côté Cloudflare. Elle
 n'entre pas dans le dépôt git.
 
-Vérifié : ce jeton **ne tourne pas** — deux appels successifs à
-`/auth/refresh` renvoient le même cookie et le même `sub`. Une seule
-saisie suffit donc, pour 30 jours glissants.
+Quand ce jeton expire, il peut être remplacé depuis le bouton
+**Renouveler le token** du profil. La valeur est enregistrée dans le secret
+partagé du Worker : la correction s'applique donc à tous les visiteurs.
+
+### Autoriser le renouvellement depuis le site
+
+La route d'administration nécessite deux secrets supplémentaires :
+
+```bash
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put CF_API_TOKEN
+```
+
+- `ADMIN_PASSWORD` est le mot de passe demandé dans la fenêtre du site ;
+- `CF_API_TOKEN` est un jeton API Cloudflare limité au compte concerné,
+  avec la permission **Workers Scripts: Edit**.
+
+Le nouveau refresh token est testé auprès d'OpenFront avant tout changement,
+puis `OF_REFRESH_TOKEN` est remplacé atomiquement. Ni le mot de passe, ni les
+deux tokens ne doivent être ajoutés à Git.
 
 ## L'application Discord
 

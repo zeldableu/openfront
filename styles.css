@@ -275,6 +275,93 @@ a { color: var(--accent); }
   padding: 6px 12px;
 }
 
+.adminBtn {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-size: 11px;
+  padding: 4px 10px;
+  color: var(--ink-3);
+}
+.adminBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------------- Modale admin ---------------- */
+
+.adminModal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .6);
+  backdrop-filter: blur(4px);
+}
+.adminModal.hidden { display: none; }
+.adminModalCard {
+  width: min(460px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-color: rgba(251, 191, 36, .34);
+  border-radius: var(--r);
+  background: rgba(4, 9, 18, .92);
+  backdrop-filter: blur(14px);
+  color: var(--ink);
+  font-size: 13px;
+  overflow-y: auto;
+}
+.adminModal h3 {
+  margin: 0;
+  color: #ffe08a;
+  font-size: 15px;
+  font-weight: 750;
+}
+.adminModal .hint {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  margin: 0;
+}
+.adminModal input[type="password"],
+.adminModal textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line-hi);
+  border-radius: 8px;
+  background: rgba(4, 9, 18, .7);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.adminModal input[type="password"]:focus,
+.adminModal textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.adminModal textarea {
+  min-height: 70px;
+  font-family: ui-monospace, "SF Mono", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+}
+.adminModal .errorMsg {
+  color: var(--bad);
+  font-size: 11.5px;
+  margin: 0;
+}
+.adminModal .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 /* ---------------- Rassemblement GAL ---------------- */
 
 /* Les deux panneaux occupent la marge droite et sont centrés dans la hauteur

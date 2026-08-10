@@ -123,6 +123,18 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+/* Les mots de passe peuvent avoir des longueurs différentes. On compare
+   donc leurs empreintes SHA-256, toujours de même taille, pour ne pas faire
+   fuiter d'information par le temps de réponse. */
+async function secretMatches(provided, expected) {
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(provided)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  return timingSafeEqual(
+    new Uint8Array(providedHash), new Uint8Array(expectedHash));
+}
+
 async function verifyPayload(env, token) {
   const [body, sig] = String(token || "").split(".");
   if (!body || !sig) return null;
@@ -281,6 +293,82 @@ async function getJwt(env) {
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+
+/* ---------------- Mise à jour admin du refreshToken ---------------- */
+
+/* Un secret Worker ne peut pas être modifié depuis le runtime : on passe
+   par l'API Cloudflare. Nécessite CF_API_TOKEN (avec le
+   scope Account > Workers Scripts > Edit) et CF_ACCOUNT_ID (variable
+   publique dans wrangler.toml). ADMIN_PASSWORD protège la route. */
+async function updateRefreshToken(env, adminPassword, newToken) {
+  const expected = env.ADMIN_PASSWORD;
+  if (!expected) throw new HttpError(503, "La mise à jour admin n'est pas configurée");
+  if (!(await secretMatches(adminPassword, expected))) {
+    throw new HttpError(403, "Mot de passe admin incorrect");
+  }
+  if (!TOKEN_RE.test(newToken)) {
+    throw new HttpError(400, "refreshToken invalide : 64 caractères hexadécimaux attendus");
+  }
+
+  /* Tester le token avant de toucher au secret partagé. Un mauvais copier-
+     coller ne doit jamais casser les statistiques pour tous les visiteurs. */
+  const validation = await fetch(`${API}/auth/refresh`, {
+    method: "POST",
+    headers: {
+      Cookie: `refreshToken=${newToken}`,
+      Origin: "https://openfront.io",
+    },
+  });
+  if (!validation.ok) {
+    throw new HttpError(400, "Ce refresh token est refusé par OpenFront");
+  }
+  const grant = await validation.json();
+  if (!grant.jwt) {
+    throw new HttpError(400, "OpenFront n'a pas renvoyé de JWT pour ce token");
+  }
+
+  const apiToken = env.CF_API_TOKEN;
+  if (!apiToken) throw new HttpError(500, "CF_API_TOKEN n'est pas configuré");
+  const accountId = env.CF_ACCOUNT_ID;
+  if (!accountId) throw new HttpError(500, "CF_ACCOUNT_ID n'est pas configuré");
+  const scriptName = env.CF_SCRIPT_NAME || "gal-openfront";
+
+  const headers = {
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+  };
+
+  /* PUT ajoute ou remplace le secret en une seule opération. Ne jamais faire
+     DELETE puis PUT : un échec intermédiaire couperait le site pour tous. */
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/secrets`,
+    {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        name: "OF_REFRESH_TOKEN",
+        text: newToken,
+        type: "secret_text",
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    console.error(JSON.stringify({
+      message: "Échec de mise à jour du secret OF_REFRESH_TOKEN",
+      status: res.status,
+    }));
+    throw new HttpError(502, "Cloudflare n'a pas pu enregistrer le nouveau token");
+  }
+
+  // Réutiliser le JWT obtenu pendant la validation dans l'isolat courant.
+  cachedJwt = grant.jwt;
+  jwtExpiresAt = Date.now() + Math.max(60, (grant.expiresIn || 900) - 60) * 1000;
+
+  return { ok: true };
+}
+
+const TOKEN_RE = /^[a-f0-9]{64}$/;
 
 async function callApi(path, { env, auth = false, ttl = 0 } = {}) {
   const key = (auth ? "a:" : "p:") + path;
@@ -576,6 +664,25 @@ export default {
         return json(JSON.stringify(identity
           ? { authenticated: true, ...identity }
           : { authenticated: false }), env, request, identity ? 200 : 401);
+      }
+
+      // --- Mise à jour du refreshToken OpenFront (admin) ---
+      // Le secret OF_REFRESH_TOKEN est immuable depuis le runtime : on le
+      // remplace atomiquement via l'API Cloudflare.
+      // Protégé par ADMIN_PASSWORD (un secret) + vérification d'origine.
+      if (path === "/admin/update-token" && request.method === "POST") {
+        if (!originAllowed(env, request)) {
+          return json(JSON.stringify({ error: "Origine interdite" }), env, request, 403);
+        }
+        let body;
+        try { body = await request.json(); }
+        catch { throw new HttpError(400, "JSON invalide"); }
+        if (!body || typeof body !== "object") {
+          throw new HttpError(400, "Corps de requête invalide");
+        }
+        const result = await updateRefreshToken(
+          env, String(body.adminPassword || ""), String(body.refreshToken || ""));
+        return json(JSON.stringify(result), env, request);
       }
 
       // --- Présence partagée entre tous les visiteurs du site ---

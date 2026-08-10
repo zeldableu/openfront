@@ -1295,6 +1295,141 @@ function renderProfile() {
   renderProfileStats();
 }
 
+/* ---------------- Admin : renouvellement du refresh token ----------------
+
+   Le refreshToken OpenFront expire. Plutôt que de passer par une IA ou la
+   console Cloudflare, un bouton dans le profil permet de le renouveler en
+   direct : le Worker appelle l'API Cloudflare pour écraser le secret
+   OF_REFRESH_TOKEN. Le mot de passe admin est demandé à chaque fois (ou
+   mémorisé sur cet appareil si l'option est cochée). */
+
+const ADMIN_PASSWORD_KEY = "of.admin-password";
+
+let adminOverlay = null;
+
+function showUpdateTokenModal() {
+  if (adminOverlay) return;
+
+  const saved = (() => {
+    try { return localStorage.getItem(ADMIN_PASSWORD_KEY) || ""; } catch { return ""; }
+  })();
+
+  const passwordInput = el("input");
+  passwordInput.type = "password";
+  passwordInput.placeholder = "Mot de passe admin";
+  passwordInput.autocomplete = "current-password";
+  passwordInput.value = saved;
+
+  const tokenInput = el("textarea");
+  tokenInput.placeholder = "Nouveau refresh token (64 hexadécimaux)";
+  tokenInput.spellcheck = false;
+  tokenInput.autocapitalize = "none";
+  tokenInput.autocomplete = "off";
+
+  const rememberCb = el("input");
+  rememberCb.type = "checkbox";
+  rememberCb.id = "adminRemember";
+  if (saved) rememberCb.checked = true;
+  const rememberLabel = el("label", "linkLabel", null);
+  rememberLabel.htmlFor = "adminRemember";
+  rememberLabel.append(rememberCb, " Mémoriser le mot de passe sur cet appareil");
+
+  const errorMsg = el("p", "errorMsg", "");
+  errorMsg.hidden = true;
+  errorMsg.setAttribute("role", "alert");
+  errorMsg.setAttribute("aria-live", "polite");
+
+  const cancelBtn = el("button", "btn ghost", "Annuler");
+  cancelBtn.type = "button";
+  const saveBtn = el("button", "btn primary", "Enregistrer");
+  saveBtn.type = "button";
+  const actions = el("div", "actions");
+  actions.append(cancelBtn, saveBtn);
+
+  const title = el("h3", null, "Renouveler le refresh token OpenFront");
+  title.id = "adminModalTitle";
+
+  const card = el("div", "adminModalCard");
+  card.append(
+    title,
+    el("p", "hint", "Cookie refreshToken côté openfront.io → F12 → Application → Cookies."),
+    el("label", "linkLabel", "Mot de passe admin"),
+    passwordInput,
+    el("label", "linkLabel", "Nouveau refresh token"),
+    tokenInput,
+    rememberLabel,
+    errorMsg,
+    actions,
+  );
+
+  adminOverlay = el("div", "adminModal");
+  adminOverlay.setAttribute("role", "dialog");
+  adminOverlay.setAttribute("aria-modal", "true");
+  adminOverlay.setAttribute("aria-labelledby", title.id);
+  adminOverlay.append(card);
+
+  cancelBtn.onclick = hideUpdateTokenModal;
+  adminOverlay.onclick = e => {
+    if (e.target === adminOverlay) hideUpdateTokenModal();
+  };
+  adminOverlay.onkeydown = e => {
+    if (e.key === "Escape") hideUpdateTokenModal();
+  };
+
+  saveBtn.onclick = async () => {
+    const password = passwordInput.value;
+    const token = tokenInput.value.trim();
+    errorMsg.hidden = true;
+    errorMsg.textContent = "";
+
+    if (!password) { errorMsg.textContent = "Mot de passe admin requis."; errorMsg.hidden = false; return; }
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      errorMsg.textContent = "Refresh token invalide : 64 hexadécimaux attendus.";
+      errorMsg.hidden = false;
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Envoi…";
+
+    try {
+      const base = presenceBase();
+      if (!base) throw new Error("Le service n'est pas configuré.");
+      const res = await fetch(`${base}/admin/update-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword: password, refreshToken: token }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+
+      if (rememberCb.checked) {
+        try { localStorage.setItem(ADMIN_PASSWORD_KEY, password); } catch { /* quota */ }
+      } else {
+        try { localStorage.removeItem(ADMIN_PASSWORD_KEY); } catch { /* stockage indisponible */ }
+      }
+
+      hideUpdateTokenModal();
+      toast("Refresh token mis à jour sur le Worker.", "ok");
+    } catch (e) {
+      errorMsg.textContent = e.message;
+      errorMsg.hidden = false;
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Enregistrer";
+    }
+  };
+
+  document.body.append(adminOverlay);
+  requestAnimationFrame(() => (saved ? tokenInput : passwordInput).focus());
+}
+
+function hideUpdateTokenModal() {
+  if (!adminOverlay) return;
+  adminOverlay.remove();
+  adminOverlay = null;
+}
+
 /* ---------------- Statistiques GAL ---------------- */
 
 function parisDayStart(date = new Date()) {
@@ -1778,6 +1913,7 @@ function init() {
 
   $("discordLogin").onclick = loginWithDiscord;
   $("logoutBtn").onclick = logout;
+  $("adminTokenBtn").onclick = showUpdateTokenModal;
   $("pseudoForm").addEventListener("submit", e => {
     e.preventDefault();
     setPseudo($("pseudoInput").value);
