@@ -1220,14 +1220,21 @@ function renderProfileStats() {
     return;
   }
 
-  const daily = state.teamStats && Array.isArray(state.teamStats.ranking)
-    ? state.teamStats.ranking.findIndex(row => row.id === state.ofAccount.publicId)
+  const teamStats = state.teamStats;
+  const daily = teamStats && Array.isArray(teamStats.ranking)
+    ? teamStats.ranking.findIndex(row => row.id === state.ofAccount.publicId)
     : -1;
-  const mine = daily >= 0 ? state.teamStats.ranking[daily] : null;
+  const mine = daily >= 0 ? teamStats.ranking[daily] : null;
+  const dailyAvailable = teamStats
+    && !teamStats.missing.includes("scores du jour")
+    && !teamStats.missing.includes("historique du clan");
 
-  host.append(statCell("🚀 Points du jour", mine ? signedScore(mine.points) : "—"));
+  host.append(statCell("🚀 Points du jour", mine
+    ? signedScore(mine.points)
+    : dailyAvailable ? signedScore(0) : "—"));
   host.append(statCell("🏅 Rang du jour",
-    mine ? `${daily + 1}ᵉ / ${state.teamStats.ranking.length}` : "—"));
+    mine ? `${daily + 1}ᵉ / ${teamStats.ranking.length}`
+         : dailyAvailable ? "Non classé" : "—"));
   host.append(statCell("🎯 Parties du jour",
     mine ? `${mine.games} · ${mine.wins} V` : "0"));
 
@@ -1299,8 +1306,8 @@ function renderProfile() {
 
    Le refreshToken OpenFront expire. Plutôt que de passer par une IA ou la
    console Cloudflare, un bouton dans le profil permet de le renouveler en
-   direct : le Worker appelle l'API Cloudflare pour écraser le secret
-   OF_REFRESH_TOKEN. Le mot de passe admin est demandé à chaque fois (ou
+   direct : le Worker l'enregistre dans le stockage durable partagé.
+   Le mot de passe admin est demandé à chaque fois (ou
    mémorisé sur cet appareil si l'option est cochée). */
 
 const ADMIN_PASSWORD_KEY = "of.admin-password";
@@ -1460,10 +1467,16 @@ async function fetchStatsJson(url) {
   return response.json();
 }
 
+/* L'API des sessions exige une date ISO à la seconde. `toISOString()` ajoute
+   des millisecondes (`.123Z`), désormais rejetées par sa validation. */
+function apiIsoSeconds(date) {
+  return date.toISOString().replace(/\.\d+Z$/, "Z");
+}
+
 async function loadDailySessions(base, start, end) {
   const query = page => new URLSearchParams({
-    start: start.toISOString(),
-    end: end.toISOString(),
+    start: apiIsoSeconds(start),
+    end: apiIsoSeconds(end),
     page: String(page),
     limit: "50",
   });
