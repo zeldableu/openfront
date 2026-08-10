@@ -17,11 +17,6 @@ ALLOWED_ORIGINS = "https://zeldableu.github.io,http://localhost:5173,http://127.
 # connexion que voit l'utilisateur.
 DISCORD_CLIENT_ID = "1533820385059930163"
 
-# Identifiant du compte Cloudflare (public : pas un secret, juste un ID).
-# Nécessaire pour appeler l'API Cloudflare depuis /admin/update-token.
-CF_ACCOUNT_ID = "dfad3f36b3b1d60476625fa10b3f1e9c"
-CF_SCRIPT_NAME = "gal-openfront"
-
 [[durable_objects.bindings]]
 name = "PRESENCE"
 class_name = "PresenceRoom"
@@ -35,4 +30,3 @@ new_sqlite_classes = ["PresenceRoom"]
 #   npx wrangler secret put DISCORD_CLIENT_SECRET  application Discord
 #   npx wrangler secret put SESSION_SECRET         signature des sessions
 #   npx wrangler secret put ADMIN_PASSWORD         accès à la fenêtre admin
-#   npx wrangler secret put CF_API_TOKEN            mise à jour du secret partagé

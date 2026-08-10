@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 /* ==================================================================
    GAL — passerelle vers l'API OpenFront
    Cloudflare Worker. Deux rôles :
@@ -49,6 +51,11 @@ const PRESENCE_TTL_MS = 65000;
    posé par le Worker lui-même après contrôle de la signature. Le corps
    envoyé par le navigateur ne peut donc pas revendiquer `verified`. */
 const IDENTITY_HEADER = "X-GAL-Identity";
+
+/* Le refresh token renouvelé est conservé dans le même Durable Object que
+   la présence du clan. Ce stockage est persistant et partagé par toutes les
+   instances du Worker, contrairement à une variable en mémoire. */
+const REFRESH_TOKEN_STORAGE_KEY = "openfrontRefreshToken";
 
 /* Préfixe des identifiants issus de Discord. Un invité qui tenterait de
    se donner un id `d_…` serait refusé : sans cela, il suffirait de copier
@@ -162,9 +169,17 @@ async function sessionIdentity(env, token) {
   };
 }
 
-export class PresenceRoom {
-  constructor(state) {
-    this.state = state;
+export class PresenceRoom extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+  }
+
+  async getOpenFrontRefreshToken() {
+    return await this.ctx.storage.get(REFRESH_TOKEN_STORAGE_KEY) || "";
+  }
+
+  async setOpenFrontRefreshToken(token) {
+    await this.ctx.storage.put(REFRESH_TOKEN_STORAGE_KEY, token);
   }
 
   /* L'identité vérifiée est fixée une fois pour toutes au moment de la
@@ -183,7 +198,7 @@ export class PresenceRoom {
     if ((request.headers.get("Upgrade") || "").toLowerCase() === "websocket") {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
-      this.state.acceptWebSocket(server);
+      this.ctx.acceptWebSocket(server);
       if (identity) server.serializeAttachment({ id: identity.id, identity });
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -207,7 +222,7 @@ export class PresenceRoom {
 
   async activeMembers() {
     const now = Date.now();
-    const members = await this.state.storage.get("members") || {};
+    const members = await this.ctx.storage.get("members") || {};
     for (const [id, member] of Object.entries(members)) {
       if (!member || now - Number(member.seenAt || 0) > PRESENCE_TTL_MS) delete members[id];
     }
@@ -217,7 +232,7 @@ export class PresenceRoom {
   async upsert(member) {
     const members = await this.activeMembers();
     members[member.id] = member;
-    await this.state.storage.put("members", members);
+    await this.ctx.storage.put("members", members);
     return members;
   }
 
@@ -228,7 +243,7 @@ export class PresenceRoom {
 
   async broadcast() {
     const payload = JSON.stringify(this.payload(await this.activeMembers()));
-    for (const socket of this.state.getWebSockets()) {
+    for (const socket of this.ctx.getWebSockets()) {
       try { socket.send(payload); } catch { /* connexion déjà fermée */ }
     }
   }
@@ -250,7 +265,7 @@ export class PresenceRoom {
     const attachment = socket.deserializeAttachment();
     const id = attachment && attachment.id;
     if (id) {
-      const stillConnected = this.state.getWebSockets().some(other => {
+      const stillConnected = this.ctx.getWebSockets().some(other => {
         if (other === socket) return false;
         const data = other.deserializeAttachment();
         return data && data.id === id;
@@ -258,17 +273,24 @@ export class PresenceRoom {
       if (!stillConnected) {
         const members = await this.activeMembers();
         delete members[id];
-        await this.state.storage.put("members", members);
+        await this.ctx.storage.put("members", members);
       }
     }
     await this.broadcast();
   }
 }
 
+function sharedRoom(env) {
+  return env.PRESENCE.getByName(env.CLAN_TAG || "GAL");
+}
+
 async function getJwt(env) {
   if (cachedJwt && Date.now() < jwtExpiresAt) return cachedJwt;
 
-  const token = env.OF_REFRESH_TOKEN;
+  /* La valeur renouvelée dans le stockage partagé est prioritaire. Le secret
+     Wrangler reste le repli initial tant qu'aucun renouvellement n'a eu lieu. */
+  const token = await sharedRoom(env).getOpenFrontRefreshToken()
+    || env.OF_REFRESH_TOKEN;
   if (!token) throw new HttpError(500, "OF_REFRESH_TOKEN n'est pas configuré");
 
   const res = await fetch(`${API}/auth/refresh`, {
@@ -296,10 +318,9 @@ class HttpError extends Error {
 
 /* ---------------- Mise à jour admin du refreshToken ---------------- */
 
-/* Un secret Worker ne peut pas être modifié depuis le runtime : on passe
-   par l'API Cloudflare. Nécessite CF_API_TOKEN (avec le
-   scope Account > Workers Scripts > Edit) et CF_ACCOUNT_ID (variable
-   publique dans wrangler.toml). ADMIN_PASSWORD protège la route. */
+/* Le token renouvelé est écrit dans le Durable Object partagé. Le secret
+   Wrangler OF_REFRESH_TOKEN sert seulement de valeur initiale/de secours.
+   ADMIN_PASSWORD protège la route. */
 async function updateRefreshToken(env, adminPassword, newToken) {
   const expected = env.ADMIN_PASSWORD;
   if (!expected) throw new HttpError(503, "La mise à jour admin n'est pas configurée");
@@ -327,39 +348,7 @@ async function updateRefreshToken(env, adminPassword, newToken) {
     throw new HttpError(400, "OpenFront n'a pas renvoyé de JWT pour ce token");
   }
 
-  const apiToken = env.CF_API_TOKEN;
-  if (!apiToken) throw new HttpError(500, "CF_API_TOKEN n'est pas configuré");
-  const accountId = env.CF_ACCOUNT_ID;
-  if (!accountId) throw new HttpError(500, "CF_ACCOUNT_ID n'est pas configuré");
-  const scriptName = env.CF_SCRIPT_NAME || "gal-openfront";
-
-  const headers = {
-    Authorization: `Bearer ${apiToken}`,
-    "Content-Type": "application/json",
-  };
-
-  /* PUT ajoute ou remplace le secret en une seule opération. Ne jamais faire
-     DELETE puis PUT : un échec intermédiaire couperait le site pour tous. */
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${scriptName}/secrets`,
-    {
-      method: "PUT",
-      headers,
-      body: JSON.stringify({
-        name: "OF_REFRESH_TOKEN",
-        text: newToken,
-        type: "secret_text",
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    console.error(JSON.stringify({
-      message: "Échec de mise à jour du secret OF_REFRESH_TOKEN",
-      status: res.status,
-    }));
-    throw new HttpError(502, "Cloudflare n'a pas pu enregistrer le nouveau token");
-  }
+  await sharedRoom(env).setOpenFrontRefreshToken(newToken);
 
   // Réutiliser le JWT obtenu pendant la validation dans l'isolat courant.
   cachedJwt = grant.jwt;
@@ -667,8 +656,8 @@ export default {
       }
 
       // --- Mise à jour du refreshToken OpenFront (admin) ---
-      // Le secret OF_REFRESH_TOKEN est immuable depuis le runtime : on le
-      // remplace atomiquement via l'API Cloudflare.
+      // Le nouveau token est validé puis enregistré dans le stockage durable
+      // partagé par toutes les instances du Worker.
       // Protégé par ADMIN_PASSWORD (un secret) + vérification d'origine.
       if (path === "/admin/update-token" && request.method === "POST") {
         if (!originAllowed(env, request)) {
@@ -690,12 +679,12 @@ export default {
         if (!originAllowed(env, request)) {
           return json(JSON.stringify({ error: "Origine interdite" }), env, request, 403);
         }
-        const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
+        const room = sharedRoom(env);
         return await room.fetch(await withIdentity(env, request, url.searchParams.get("token")));
       }
 
       if (path === "/presence" && request.method === "POST") {
-        const room = env.PRESENCE.get(env.PRESENCE.idFromName(env.CLAN_TAG || "GAL"));
+        const room = sharedRoom(env);
         const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         const response = await room.fetch(await withIdentity(env, request, token));
         return json(await response.text(), env, request, response.status);
