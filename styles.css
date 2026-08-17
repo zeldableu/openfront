@@ -900,6 +900,13 @@ main {
   background: var(--bg-2);
   overflow: hidden;
 }
+.cardImage.mapImageMissing,
+.winCard.mapImageMissing {
+  background:
+    radial-gradient(circle at 28% 30%, rgba(70, 196, 142, .34), transparent 32%),
+    radial-gradient(circle at 72% 65%, rgba(58, 160, 255, .3), transparent 36%),
+    linear-gradient(145deg, #132b36, #0b1728 58%, #172d39);
+}
 .cardImage img {
   width: 100%; height: 100%;
   object-fit: cover;

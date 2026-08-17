@@ -12,8 +12,7 @@
 const WORKERS   = ["w0", "w1", "w2", "w3", "w4"];
 const WS_URL    = w => `wss://openfront.io/${w}/lobbies`;
 const JOIN_URL  = id => `https://openfront.io/game/${encodeURIComponent(id)}`;
-const THUMB_URL = slug =>
-  `https://raw.githubusercontent.com/openfrontio/OpenFrontIO/main/resources/maps/${slug}/thumbnail.webp`;
+const THUMB_URL = slug => `assets/maps/${encodeURIComponent(slug)}.webp`;
 
 const COLUMNS = [
   { cat: "ffa",     cards: "colFfa",     count: "countFfa" },
@@ -510,7 +509,10 @@ function buildCard(g) {
   img.decoding = "async";
   img.alt = "";
   img.src = THUMB_URL(g.slug);
-  img.onerror = () => { img.style.opacity = "0"; };
+  img.onerror = () => {
+    image.classList.add("mapImageMissing");
+    img.remove();
+  };
   const bar = el("div", "cardBar");
   bar.append(el("i"));
   const rally = el("div", "cardRally");
@@ -1767,7 +1769,10 @@ function buildWinCard(game) {
   img.decoding = "async";
   img.alt = "";
   img.src = THUMB_URL(mapSlug(game.map));
-  img.onerror = () => { img.style.display = "none"; };
+  img.onerror = () => {
+    card.classList.add("mapImageMissing");
+    img.remove();
+  };
 
   const hasScore = Number.isFinite(Number(game.clanScore));
   const points = el("span", "winPoints" + (hasScore ? "" : " unranked"),
