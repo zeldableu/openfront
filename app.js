@@ -1871,24 +1871,159 @@ function initWinsSlider() {
   loadClanWins();
 }
 
-/* ---------------- Cochon sonore ---------------- */
+/* ---------------- Machine à sous cochon-chèvre ---------------- */
 
-function initGoatSound() {
-  const button = $("goatSound");
-  const audio = $("goatAudio");
-  if (!button || !audio) return;
+const SLOT_SYMBOLS = {
+  pig: { src: "flying-pig.png?v=20260817-1", label: "Cochon" },
+  goat: { src: "slot-goat.webp?v=20260817-1", label: "Chèvre" },
+};
+const SLOT_LOSSES = [
+  ["pig", "pig", "goat"],
+  ["pig", "goat", "pig"],
+  ["goat", "pig", "pig"],
+  ["pig", "goat", "goat"],
+  ["goat", "pig", "goat"],
+  ["goat", "goat", "pig"],
+];
 
-  button.addEventListener("click", () => {
-    audio.currentTime = 0;
-    const playback = audio.play();
+let slotSpinning = false;
+let slotSpinId = 0;
+let slotIntervals = [];
+let slotReturnFocus = null;
 
-    button.classList.remove("playing");
-    void button.offsetWidth;
-    button.classList.add("playing");
+function randomInt(max) {
+  if (!Number.isInteger(max) || max <= 0) throw new RangeError("max invalide");
+  if (!window.crypto?.getRandomValues) return Math.floor(Math.random() * max);
 
-    if (playback) playback.catch(() => toast("Le son du cochon est bloqué par le navigateur.", "bad"));
+  const range = 0x100000000;
+  const limit = range - (range % max);
+  const draw = new Uint32Array(1);
+  do { window.crypto.getRandomValues(draw); } while (draw[0] >= limit);
+  return draw[0] % max;
+}
+
+function setSlotSymbol(image, symbolName) {
+  const symbol = SLOT_SYMBOLS[symbolName];
+  image.src = symbol.src;
+  image.alt = symbol.label;
+  image.dataset.symbol = symbolName;
+}
+
+function clearSlotIntervals() {
+  for (const interval of slotIntervals) clearInterval(interval);
+  slotIntervals = [];
+}
+
+function stopSlotMusic() {
+  const audio = $("slotWinAudio");
+  if (!audio) return;
+  audio.pause();
+  try { audio.currentTime = 0; } catch { /* métadonnées pas encore chargées */ }
+}
+
+function showSlotMachine() {
+  const modal = $("slotModal");
+  slotReturnFocus = document.activeElement;
+  modal.hidden = false;
+  document.body.classList.add("slotOpen");
+  $("slotMachine").classList.remove("win");
+  requestAnimationFrame(() => $("slotClose").focus());
+}
+
+function hideSlotMachine() {
+  slotSpinId += 1;
+  slotSpinning = false;
+  clearSlotIntervals();
+  stopSlotMusic();
+  document.querySelectorAll(".slotReel.spinning").forEach(reel => reel.classList.remove("spinning"));
+  $("slotLever").disabled = false;
+  $("slotLever").classList.remove("pulled");
+  $("slotModal").hidden = true;
+  document.body.classList.remove("slotOpen");
+  if (slotReturnFocus?.focus) slotReturnFocus.focus();
+}
+
+function slotDelay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function spinSlotMachine() {
+  if (slotSpinning) return;
+  const spinId = ++slotSpinId;
+  const machine = $("slotMachine");
+  const lever = $("slotLever");
+  const result = $("slotResult");
+  const reels = [...document.querySelectorAll("[data-slot-reel]")];
+
+  slotSpinning = true;
+  stopSlotMusic();
+  machine.classList.remove("win");
+  lever.disabled = true;
+  lever.classList.remove("pulled");
+  void lever.offsetWidth;
+  lever.classList.add("pulled");
+  result.textContent = "Les rouleaux tournent…";
+
+  const winner = randomInt(10) === 0;
+  const finalSymbols = winner
+    ? ["pig", "pig", "pig"]
+    : SLOT_LOSSES[randomInt(SLOT_LOSSES.length)];
+
+  clearSlotIntervals();
+  reels.forEach((image, index) => {
+    image.parentElement.classList.add("spinning");
+    slotIntervals[index] = setInterval(() => {
+      setSlotSymbol(image, randomInt(2) ? "pig" : "goat");
+    }, 82 + index * 11);
   });
-  button.addEventListener("animationend", () => button.classList.remove("playing"));
+
+  await slotDelay(760);
+  for (let index = 0; index < reels.length; index += 1) {
+    if (spinId !== slotSpinId) return;
+    clearInterval(slotIntervals[index]);
+    setSlotSymbol(reels[index], finalSymbols[index]);
+    reels[index].parentElement.classList.remove("spinning");
+    await slotDelay(230);
+  }
+  clearSlotIntervals();
+  if (spinId !== slotSpinId) return;
+
+  slotSpinning = false;
+  lever.disabled = false;
+  lever.classList.remove("pulled");
+
+  if (winner) {
+    machine.classList.add("win");
+    result.textContent = "JACKPOT GAL ! Tu as gagné !";
+    const audio = $("slotWinAudio");
+    try { audio.currentTime = 0; } catch { /* premier chargement */ }
+    const playback = audio.play();
+    if (playback) playback.catch(() => toast("La musique de victoire est bloquée par le navigateur.", "bad"));
+  } else {
+    result.textContent = "Perdu… Retente ta chance !";
+  }
+}
+
+function initSlotMachine() {
+  const launcher = $("pigLauncher");
+  const modal = $("slotModal");
+  if (!launcher || !modal) return;
+
+  launcher.onclick = () => {
+    launcher.classList.remove("opening");
+    void launcher.offsetWidth;
+    launcher.classList.add("opening");
+    showSlotMachine();
+  };
+  launcher.addEventListener("animationend", () => launcher.classList.remove("opening"));
+  $("slotLever").onclick = spinSlotMachine;
+  $("slotClose").onclick = hideSlotMachine;
+  modal.onclick = event => {
+    if (event.target === modal) hideSlotMachine();
+  };
+  modal.onkeydown = event => {
+    if (event.key === "Escape") hideSlotMachine();
+  };
 }
 
 /* ---------------- Toasts ---------------- */
@@ -1949,7 +2084,7 @@ function init() {
   }
 
   initWinsSlider();
-  initGoatSound();
+  initSlotMachine();
   loadTeamStats();
   setInterval(loadTeamStats, STATS_REFRESH_MS);
 

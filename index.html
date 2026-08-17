@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lobbies OpenFront</title>
 <meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
-<link rel="stylesheet" href="styles.css?v=20260817-2">
+<link rel="stylesheet" href="styles.css?v=20260817-3">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
 </head>
 <body>
@@ -141,11 +141,45 @@
 
 </main>
 
-<button class="goatSound" id="goatSound" type="button"
-        aria-label="Faire parler le cochon" title="Clique sur le cochon 🐷">
+<button class="pigLauncher" id="pigLauncher" type="button"
+        aria-label="Ouvrir la machine à sous GAL" title="Tente le jackpot GAL 🐷">
   <img src="flying-pig.png?v=20260817-1" alt="" draggable="false">
 </button>
-  <audio id="goatAudio" src="flo.wav" preload="auto"></audio>
+
+<div class="slotModal" id="slotModal" hidden>
+  <section class="slotMachine" id="slotMachine" role="dialog" aria-modal="true"
+           aria-labelledby="slotTitle" aria-describedby="slotOdds" tabindex="-1">
+    <button class="slotClose" id="slotClose" type="button"
+            aria-label="Fermer la machine à sous">×</button>
+
+    <header class="slotHeader">
+      <span class="slotEyebrow">CASINO GAL</span>
+      <h2 id="slotTitle">La machine cochon-chèvre</h2>
+      <p id="slotOdds">Trois cochons : jackpot · 1 chance sur 10</p>
+    </header>
+
+    <div class="slotGame">
+      <div class="slotCabinet">
+        <div class="slotMarquee">GAL JACKPOT</div>
+        <div class="slotReels" aria-label="Résultat des rouleaux">
+          <div class="slotReel"><img data-slot-reel src="flying-pig.png?v=20260817-1" alt="Cochon"></div>
+          <div class="slotReel"><img data-slot-reel src="slot-goat.webp?v=20260817-1" alt="Chèvre"></div>
+          <div class="slotReel"><img data-slot-reel src="flying-pig.png?v=20260817-1" alt="Cochon"></div>
+        </div>
+        <p class="slotResult" id="slotResult" aria-live="polite">Tire le levier pour jouer.</p>
+      </div>
+
+      <button class="slotLever" id="slotLever" type="button"
+              aria-label="Tirer le levier et lancer les rouleaux">
+        <span class="leverKnob" aria-hidden="true"></span>
+        <span class="leverArm" aria-hidden="true"></span>
+        <span class="leverBase" aria-hidden="true"></span>
+        <span class="leverLabel" aria-hidden="true">JOUER</span>
+      </button>
+    </div>
+  </section>
+</div>
+<audio id="slotWinAudio" src="zone-gal-machine.mp3" preload="none"></audio>
 
 <section class="wins" id="wins" aria-labelledby="winsTitle">
   <div class="winsHeader">
@@ -167,6 +201,6 @@
 <div class="toasts" id="toasts"></div>
 
 <script src="team.config.js"></script>
-<script src="app.js?v=20260817-2"></script>
+<script src="app.js?v=20260817-3"></script>
 </body>
 </html>

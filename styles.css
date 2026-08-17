@@ -719,9 +719,9 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   font-size: 10.5px;
 }
 
-/* ---------------- Cochon sonore ---------------- */
+/* ---------------- Lanceur cochon ---------------- */
 
-.goatSound {
+.pigLauncher {
   position: fixed;
   z-index: 14;
   right: clamp(20px, 3vw, 60px);
@@ -736,7 +736,7 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   transform-origin: 50% 92%;
   transition: filter .18s ease, transform .18s ease;
 }
-.goatSound img {
+.pigLauncher img {
   display: block;
   width: 100%;
   max-height: clamp(145px, 21vh, 220px);
@@ -745,24 +745,268 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   pointer-events: none;
   user-select: none;
 }
-.goatSound:hover,
-.goatSound:focus-visible {
+.pigLauncher:hover,
+.pigLauncher:focus-visible {
   filter: drop-shadow(0 16px 16px rgba(0, 0, 0, .6)) brightness(1.08);
   outline: none;
   transform: translateY(-4px) scale(1.045);
 }
-.goatSound:focus-visible {
+.pigLauncher:focus-visible {
   filter: drop-shadow(0 0 8px var(--accent)) brightness(1.08);
 }
-.goatSound.playing {
-  animation: goatBounce .48s ease-out;
+.pigLauncher.opening {
+  animation: pigBounce .48s ease-out;
 }
-@keyframes goatBounce {
+@keyframes pigBounce {
   0% { transform: translateY(0) rotate(0); }
   28% { transform: translateY(-13px) rotate(-4deg) scale(1.06); }
   58% { transform: translateY(0) rotate(3deg) scale(.99); }
   78% { transform: translateY(-5px) rotate(-1deg) scale(1.02); }
   100% { transform: translateY(0) rotate(0); }
+}
+
+/* ---------------- Machine à sous GAL ---------------- */
+
+body.slotOpen { overflow: hidden; }
+.slotModal[hidden] { display: none; }
+.slotModal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(1, 4, 10, .82);
+  backdrop-filter: blur(12px);
+}
+.slotMachine {
+  position: relative;
+  width: min(760px, 96vw);
+  max-height: calc(100vh - 30px);
+  overflow: auto;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid rgba(255, 196, 67, .72);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 0, rgba(255, 190, 54, .18), transparent 38%),
+    linear-gradient(145deg, #182538, #080e19 70%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .72), inset 0 0 36px rgba(255, 190, 54, .08);
+  color: var(--ink);
+}
+.slotMachine.win {
+  animation: slotWinPulse 1s ease-in-out infinite alternate;
+  border-color: #ffe066;
+  box-shadow: 0 0 45px rgba(255, 204, 61, .66), 0 30px 90px rgba(0, 0, 0, .72);
+}
+.slotClose {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 50%;
+  background: rgba(2, 7, 14, .72);
+  color: var(--ink);
+  font: 700 25px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.slotClose:hover,
+.slotClose:focus-visible {
+  border-color: #ffd34d;
+  color: #ffd34d;
+  outline: none;
+}
+.slotHeader {
+  padding: 0 44px 18px;
+  text-align: center;
+}
+.slotEyebrow {
+  color: #ffd34d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .24em;
+}
+.slotHeader h2 {
+  margin: 4px 0 2px;
+  color: #fff3b0;
+  font-size: clamp(22px, 4vw, 34px);
+  text-shadow: 0 0 18px rgba(255, 190, 54, .35);
+}
+.slotHeader p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.slotGame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 18px;
+}
+.slotCabinet {
+  position: relative;
+  padding: 16px;
+  border: 5px solid #b46b16;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f5b942, #8e470d 55%, #e6a62d);
+  box-shadow:
+    inset 0 0 0 3px #ffd76a,
+    inset 0 -18px 30px rgba(84, 32, 0, .42),
+    0 20px 40px rgba(0, 0, 0, .42);
+}
+.slotMarquee {
+  margin: 0 auto 12px;
+  padding: 8px 12px;
+  border: 2px solid #6f3007;
+  border-radius: 999px;
+  background: #4d1207;
+  color: #ffe56f;
+  font-size: clamp(15px, 3vw, 22px);
+  font-weight: 1000;
+  letter-spacing: .13em;
+  text-align: center;
+  text-shadow: 0 0 8px #ff9300;
+}
+.slotReels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border: 4px solid #4a230b;
+  border-radius: 15px;
+  background: #130d0a;
+  box-shadow: inset 0 8px 20px rgba(0, 0, 0, .72);
+}
+.slotReel {
+  position: relative;
+  aspect-ratio: .86;
+  min-width: 0;
+  overflow: hidden;
+  border: 3px solid #f2c75d;
+  border-radius: 12px;
+  background:
+    linear-gradient(rgba(255, 255, 255, .92), rgba(228, 236, 242, .96)),
+    repeating-linear-gradient(45deg, #fff 0 9px, #edf1f4 9px 18px);
+  box-shadow: inset 0 0 22px rgba(31, 24, 17, .24);
+}
+.slotReel::before,
+.slotReel::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  height: 18%;
+  pointer-events: none;
+}
+.slotReel::before { top: 0; background: linear-gradient(rgba(21, 16, 12, .24), transparent); }
+.slotReel::after { bottom: 0; background: linear-gradient(transparent, rgba(21, 16, 12, .24)); }
+.slotReel img {
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 5px rgba(0, 0, 0, .24));
+  user-select: none;
+}
+.slotReel.spinning img { animation: slotSpin .16s linear infinite; }
+.slotResult {
+  min-height: 25px;
+  margin: 13px 4px 0;
+  color: #fff4be;
+  font-size: clamp(14px, 2.4vw, 18px);
+  font-weight: 900;
+  text-align: center;
+}
+.slotMachine.win .slotResult {
+  color: #fff078;
+  text-shadow: 0 0 14px rgba(255, 224, 72, .8);
+}
+.slotLever {
+  --lever-knob-x: 39px;
+  --lever-knob-y: 145px;
+  position: relative;
+  width: 86px;
+  height: 250px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.slotLever:focus-visible {
+  border-radius: 18px;
+  outline: 3px solid #ffd34d;
+  outline-offset: 4px;
+}
+.slotLever:disabled { cursor: wait; }
+.leverBase {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 18px;
+  height: 62px;
+  border: 4px solid #50260b;
+  border-radius: 17px;
+  background: linear-gradient(90deg, #8a460e, #e4a128 48%, #773707);
+  box-shadow: inset 0 0 0 2px #ffd66c, 0 12px 18px rgba(0, 0, 0, .4);
+}
+.leverArm {
+  position: absolute;
+  z-index: 1;
+  left: 38px;
+  bottom: 58px;
+  width: 10px;
+  height: 145px;
+  border: 2px solid #4a4f59;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7d8791, #f0f4f6 48%, #69717a);
+  box-shadow: 4px 4px 8px rgba(0, 0, 0, .38);
+  transform-origin: 50% 100%;
+}
+.leverKnob {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 22px;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #7b140d;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #ff8b70, #e62e21 52%, #85130c 78%);
+  box-shadow: 0 7px 12px rgba(0, 0, 0, .42), inset 0 2px 5px rgba(255, 255, 255, .42);
+}
+.leverLabel {
+  position: absolute;
+  z-index: 2;
+  bottom: 37px;
+  left: 0;
+  right: 0;
+  color: #fff0a4;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .1em;
+}
+.slotLever:hover .leverKnob { filter: brightness(1.15); }
+.slotLever.pulled .leverArm { animation: leverPull .72s cubic-bezier(.3, .8, .35, 1); }
+.slotLever.pulled .leverKnob { animation: leverKnobPull .72s cubic-bezier(.3, .8, .35, 1); }
+
+@keyframes slotSpin {
+  0% { transform: translateY(-13%) scale(.94); filter: blur(1px); }
+  50% { transform: translateY(13%) scale(1.04); filter: blur(3px); }
+  100% { transform: translateY(-13%) scale(.94); filter: blur(1px); }
+}
+@keyframes leverPull {
+  0%, 100% { transform: rotate(0); }
+  46%, 62% { transform: rotate(152deg); }
+}
+@keyframes leverKnobPull {
+  0%, 100% { transform: translate(0, 0); }
+  46%, 62% { transform: translate(var(--lever-knob-x), var(--lever-knob-y)); }
+}
+@keyframes slotWinPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.008); }
 }
 
 /* ---------------- Les trois colonnes ---------------- */
@@ -1329,7 +1573,7 @@ main {
     margin-bottom: 8px;
   }
   .rightRail { display: none; }
-  .goatSound {
+  .pigLauncher {
     right: 10px;
     width: 175px;
   }
@@ -1346,16 +1590,40 @@ main {
   main { padding: 8px 9px 0; }
   .wins { height: 180px; padding: 8px 9px 9px; }
   .winCard { flex-basis: min(76vw, 290px); }
-  .goatSound {
+  .pigLauncher {
     bottom: 174px;
     width: 135px;
   }
 }
 @media (max-width: 480px) {
   .cardTitle { font-size: 14px; }
+  .slotModal { padding: 8px; }
+  .slotMachine { padding: 17px 10px 14px; border-radius: 17px; }
+  .slotHeader { padding: 0 34px 12px; }
+  .slotHeader p { font-size: 11px; }
+  .slotGame { grid-template-columns: minmax(0, 1fr) 58px; gap: 5px; }
+  .slotCabinet { padding: 9px; border-width: 3px; border-radius: 14px; }
+  .slotMarquee { margin-bottom: 7px; padding: 5px 7px; }
+  .slotReels { gap: 4px; padding: 5px; border-width: 3px; }
+  .slotReel { border-width: 2px; border-radius: 8px; }
+  .slotReel img { padding: 3px; }
+  .slotLever {
+    --lever-knob-x: 24px;
+    --lever-knob-y: 104px;
+    width: 58px;
+    height: 190px;
+  }
+  .leverBase { left: 2px; right: 2px; height: 49px; }
+  .leverArm { left: 25px; bottom: 55px; height: 104px; width: 8px; }
+  .leverKnob { top: 13px; left: 12px; width: 34px; height: 34px; }
+  .leverLabel { bottom: 34px; font-size: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card.entering, .card.leaving { animation-duration: .01ms; }
-  .goatSound.playing { animation-duration: .01ms; }
+  .pigLauncher.opening,
+  .slotReel.spinning img,
+  .slotLever.pulled .leverArm,
+  .slotLever.pulled .leverKnob,
+  .slotMachine.win { animation-duration: .01ms; }
 }
