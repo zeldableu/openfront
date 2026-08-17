@@ -1871,7 +1871,7 @@ function initWinsSlider() {
   loadClanWins();
 }
 
-/* ---------------- Chèvre sonore ---------------- */
+/* ---------------- Cochon sonore ---------------- */
 
 function initGoatSound() {
   const button = $("goatSound");
@@ -1886,7 +1886,7 @@ function initGoatSound() {
     void button.offsetWidth;
     button.classList.add("playing");
 
-    if (playback) playback.catch(() => toast("Le son de la chèvre est bloqué par le navigateur.", "bad"));
+    if (playback) playback.catch(() => toast("Le son du cochon est bloqué par le navigateur.", "bad"));
   });
   button.addEventListener("animationend", () => button.classList.remove("playing"));
 }

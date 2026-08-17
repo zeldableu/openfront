@@ -719,14 +719,14 @@ button.rallyPlayer:hover, button.rallyPlayer:focus-visible {
   font-size: 10.5px;
 }
 
-/* ---------------- Chèvre sonore ---------------- */
+/* ---------------- Cochon sonore ---------------- */
 
 .goatSound {
   position: fixed;
   z-index: 14;
   right: clamp(20px, 3vw, 60px);
   bottom: calc(var(--feed-height) - 9px);
-  width: clamp(135px, 10vw, 185px);
+  width: clamp(200px, 15vw, 280px);
   margin: 0;
   padding: 0;
   border: 0;
@@ -1331,7 +1331,7 @@ main {
   .rightRail { display: none; }
   .goatSound {
     right: 10px;
-    width: 115px;
+    width: 175px;
   }
   .board {
     width: 100%;
@@ -1348,7 +1348,7 @@ main {
   .winCard { flex-basis: min(76vw, 290px); }
   .goatSound {
     bottom: 174px;
-    width: 88px;
+    width: 135px;
   }
 }
 @media (max-width: 480px) {
