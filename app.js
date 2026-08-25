@@ -244,6 +244,7 @@ function connect() {
     scheduleReconnect(gen);
     return;
   }
+  ws.binaryType = "arraybuffer";
   state.ws = ws;
 
   ws.onopen = () => {
@@ -254,7 +255,15 @@ function connect() {
   ws.onmessage = ev => {
     if (gen !== state.wsGen) return;
     let msg;
-    try { msg = JSON.parse(ev.data); } catch { return; }
+    try {
+      msg = typeof ev.data === "string"
+        ? JSON.parse(ev.data)
+        : window.OpenFrontLobbyWire.decodeLobbyMessage(ev.data);
+    } catch (error) {
+      console.error("Trame de lobbies OpenFront illisible", error);
+      try { ws.close(); } catch { /* deja ferme */ }
+      return;
+    }
     applyMessage(msg);
   };
   ws.onclose = () => { if (gen === state.wsGen) scheduleReconnect(gen); };
