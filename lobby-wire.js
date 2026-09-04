@@ -3,6 +3,7 @@
  * Since OpenFrontIO commit d70e4865ca (2026-08-21), lobby frames use the
  * project's positional Zbin format instead of JSON. This is a deliberately
  * small, dependency-free decoder for PublicLobbyMessageSchema only.
+ * Schema synchronized with OpenFrontIO d594ff8e (2026-09-04).
  */
 (function (root) {
   "use strict";
@@ -248,7 +249,6 @@
     bool("isPeaceTime", { optional: true }),
     bool("isWaterNukes", { optional: true }),
     bool("isDoomsdayClock", { optional: true }),
-    bool("isOvertime", { optional: true }),
   ]);
 
   const nations = union([
@@ -299,6 +299,7 @@
     bool("randomSpawn"),
     body("maxPlayers", uint, { optional: true }),
     body("allowedPublicIds", array(string), { optional: true }),
+    bool("trusted", { optional: true }),
     body("maxTimerValue", uint, { optional: true, nullable: true }),
     body("customAllianceDuration", uint, { optional: true, nullable: true }),
     body("startDelay", uint, { optional: true, nullable: true }),
