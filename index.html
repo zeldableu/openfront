@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lobbies OpenFront</title>
 <meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
-<link rel="stylesheet" href="styles.css?v=20260817-3">
+<link rel="stylesheet" href="styles.css?v=20260904-2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
 </head>
 <body>
@@ -135,8 +135,11 @@
   </div>
 
   <div class="empty" id="emptyState" hidden>
-    <strong>Aucun lobby ouvert pour le moment.</strong>
-    <span>La liste se met à jour toute seule.</span>
+    <strong id="emptyTitle">Aucun lobby ouvert pour le moment.</strong>
+    <span id="emptyText">La liste se met à jour toute seule.</span>
+    <button class="unlockLobbies" id="unlockLobbies" type="button" hidden>
+      Ouvrir OpenFront et activer les maps
+    </button>
   </div>
 
 </main>
@@ -202,6 +205,6 @@
 
 <script src="team.config.js"></script>
 <script src="lobby-wire.js?v=20260904-1"></script>
-<script src="app.js?v=20260904-1"></script>
+<script src="app.js?v=20260904-2"></script>
 </body>
 </html>
