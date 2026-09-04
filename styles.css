@@ -1275,26 +1275,6 @@ main {
   color: var(--ink-3);
 }
 .empty strong { color: var(--ink-2); font-size: 15px; }
-.unlockLobbies {
-  align-self: center;
-  margin-top: 10px;
-  padding: 10px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 62%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 20%, rgba(3, 15, 28, .96));
-  color: #fff;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-  transition: border-color .16s ease, filter .16s ease, transform .16s ease;
-}
-.unlockLobbies:hover,
-.unlockLobbies:focus-visible {
-  border-color: var(--accent);
-  filter: brightness(1.18);
-  outline: none;
-  transform: translateY(-1px);
-}
 
 /* ---------------- Feed des dernières parties ---------------- */
 

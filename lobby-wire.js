@@ -3,7 +3,9 @@
  * Since OpenFrontIO commit d70e4865ca (2026-08-21), lobby frames use the
  * project's positional Zbin format instead of JSON. This is a deliberately
  * small, dependency-free decoder for PublicLobbyMessageSchema only.
- * Schema synchronized with OpenFrontIO d594ff8e (2026-09-04).
+ * Schema synchronized with OpenFrontIO release v0.33.13, the version deployed
+ * in production on 2026-09-04. Do not follow `main`: Zbin is positional and a
+ * field that has not shipped yet shifts every value that follows it.
  */
 (function (root) {
   "use strict";
@@ -137,9 +139,10 @@
   const float64 = reader => reader.float64();
   const string = reader => reader.string();
 
-  const enumeration = values => reader => {
+  const enumeration = (values, allowUnknown = false) => reader => {
     const ordinal = reader.uint();
     if (ordinal >= values.length) {
+      if (allowUnknown) return `unknown#${ordinal}`;
       throw new WireError(`Valeur d'enum lobby inconnue: ${ordinal}`);
     }
     return values[ordinal];
@@ -209,7 +212,7 @@
     "Tourney 2 Teams", "Tourney 3 Teams", "Tourney 4 Teams",
     "Tourney 8 Teams", "Traders Dream", "Two Lakes", "United States",
     "Venice", "Vietnam", "Warship Warship", "World", "World Inverted",
-    "Yangtze River", "Yellow Sea", "Yenisei",
+    "Yellow Sea", "Yenisei",
   ];
 
   const GAME_TYPES = ["Singleplayer", "Public", "Private"];
@@ -272,7 +275,8 @@
   ]);
 
   const gameConfig = object([
-    body("gameMap", enumeration(GAME_MAPS)),
+    // Une nouvelle map seule ne doit pas faire disparaître tout le tableau.
+    body("gameMap", enumeration(GAME_MAPS, true)),
     body("difficulty", enumeration(DIFFICULTIES)),
     bool("donateGold"),
     bool("donateTroops"),
@@ -299,7 +303,6 @@
     bool("randomSpawn"),
     body("maxPlayers", uint, { optional: true }),
     body("allowedPublicIds", array(string), { optional: true }),
-    bool("trusted", { optional: true }),
     body("maxTimerValue", uint, { optional: true, nullable: true }),
     body("customAllianceDuration", uint, { optional: true, nullable: true }),
     body("startDelay", uint, { optional: true, nullable: true }),

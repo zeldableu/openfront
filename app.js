@@ -489,14 +489,6 @@ function render() {
 
   animateCardReflow(previousPositions);
 
-  const offline = state.status === "off";
-  $("emptyTitle").textContent = offline
-    ? "OpenFront demande une vérification."
-    : "Aucun lobby ouvert pour le moment.";
-  $("emptyText").textContent = offline
-    ? "Ouvre OpenFront une fois, laisse la page se charger, puis reviens ici."
-    : "La liste se met à jour toute seule.";
-  $("unlockLobbies").hidden = !offline;
   $("emptyState").hidden = list.length > 0 || state.status === "connecting";
   $("board").hidden = list.length === 0 && state.status !== "connecting";
 }
@@ -2089,11 +2081,6 @@ function init() {
     e.preventDefault();
     setPseudo($("pseudoInput").value);
   });
-  $("unlockLobbies").onclick = () => {
-    window.open("https://openfront.io/", "_blank", "noopener,noreferrer");
-    toast("Laisse OpenFront se charger, puis reviens sur cette page.", "ok");
-  };
-
   state.ofAccount = loadOfAccount();
   loadRoster();
   if (state.ofAccount) loadOfStats();
