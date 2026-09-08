@@ -1131,7 +1131,14 @@ main {
   from { opacity: 1; transform: none; filter: none; }
   to { opacity: 0; transform: translateY(-8px) scale(.96); filter: blur(2px); }
 }
-.card.rallied { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 30px -14px var(--accent); }
+.card.rallied {
+  border-color: #7dd3fc;
+  background: color-mix(in srgb, var(--card-hi) 88%, #082a4a);
+  box-shadow:
+    0 0 0 2px rgba(125, 211, 252, .88),
+    0 0 18px 4px rgba(58, 160, 255, .72),
+    0 0 52px -5px rgba(168, 85, 247, .88);
+}
 
 @property --rally-angle {
   syntax: "<angle>";
@@ -1145,7 +1152,7 @@ main {
   position: absolute;
   inset: 0;
   z-index: 4;
-  padding: 3px;
+  padding: 5px;
   border-radius: 9px 9px 0 0;
   background: var(--rally-gradient, conic-gradient(#3aa0ff, #a855f7, #22d3ee, #3aa0ff));
   opacity: 0;
@@ -1155,23 +1162,39 @@ main {
   mask-composite: exclude;
 }
 .card.hasRally .rallyHalo {
-  opacity: .88;
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 4px rgba(255, 255, 255, .85))
+    drop-shadow(0 0 10px rgba(58, 160, 255, .92));
   animation:
     rallyHaloSpin var(--rally-speed, 5.5s) linear infinite,
     rallyHaloBreathe 2.2s ease-in-out infinite alternate;
+}
+.card.hasRally:not(.rallied):not(.rallyComplete) {
+  border-color: rgba(94, 210, 255, .78);
+  box-shadow:
+    0 0 0 1px rgba(94, 210, 255, .65),
+    0 0 24px -2px rgba(58, 160, 255, .62),
+    0 0 45px -14px rgba(168, 85, 247, .8);
 }
 .card.rallyComplete {
   --rally-gradient: conic-gradient(
     from var(--rally-angle), #fff4ad, #fbbf24, #fffbe6, #d89a08, #fff4ad
   ) !important;
   border-color: rgba(251, 191, 36, .9);
-  box-shadow: 0 0 0 1px rgba(251, 191, 36, .72), 0 0 32px -9px #fbbf24;
+  box-shadow:
+    0 0 0 3px rgba(255, 244, 173, .92),
+    0 0 22px 5px rgba(251, 191, 36, .78),
+    0 0 58px -4px rgba(245, 158, 11, .92);
 }
 .card.rallyImminent .rallyHalo {
   filter: brightness(1.22) saturate(1.18);
 }
 @keyframes rallyHaloSpin { to { --rally-angle: 360deg; } }
-@keyframes rallyHaloBreathe { from { opacity: .58; } to { opacity: 1; } }
+@keyframes rallyHaloBreathe {
+  from { opacity: .78; filter: brightness(1) saturate(1.1) drop-shadow(0 0 5px rgba(58, 160, 255, .8)); }
+  to { opacity: 1; filter: brightness(1.35) saturate(1.45) drop-shadow(0 0 13px rgba(168, 85, 247, .98)); }
+}
 
 .rallyWave {
   position: absolute;
