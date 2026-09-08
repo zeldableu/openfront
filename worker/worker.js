@@ -23,6 +23,8 @@ import { DurableObject } from "cloudflare:workers";
 ================================================================== */
 
 const API = "https://api.openfront.io";
+const OPENFRONT_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36";
 const DISCORD_API = "https://discord.com/api/v10";
 
 /* Durée de la session Discord. Au-delà, le site repropose le bouton. */
@@ -300,6 +302,7 @@ async function getJwt(env) {
       // serveur ne fait pas tourner ce jeton, la même valeur reste valable.
       Cookie: `refreshToken=${token}`,
       Origin: "https://openfront.io",
+      "User-Agent": OPENFRONT_USER_AGENT,
     },
   });
   if (!res.ok) throw new HttpError(502, `auth/refresh a répondu ${res.status}`);
@@ -338,6 +341,7 @@ async function updateRefreshToken(env, adminPassword, newToken) {
     headers: {
       Cookie: `refreshToken=${newToken}`,
       Origin: "https://openfront.io",
+      "User-Agent": OPENFRONT_USER_AGENT,
     },
   });
   if (!validation.ok) {
@@ -370,7 +374,7 @@ async function callApi(path, { env, auth = false, ttl = 0 } = {}) {
   const headers = {
     Accept: "application/json",
     Origin: "https://openfront.io",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+    "User-Agent": OPENFRONT_USER_AGENT,
   };
   if (auth) headers.Authorization = `Bearer ${await getJwt(env)}`;
 
