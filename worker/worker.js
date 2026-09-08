@@ -364,7 +364,14 @@ async function callApi(path, { env, auth = false, ttl = 0 } = {}) {
   const hit = cache.get(key);
   if (ttl && hit && Date.now() < hit.until) return hit.body;
 
-  const headers = { Accept: "application/json", Origin: "https://openfront.io" };
+  // Les routes publiques de l'API OpenFront sont maintenant protegees par
+  // un controle anti-bot qui refuse le User-Agent par defaut des sous-requetes
+  // Workers. On reproduit les en-tetes envoyes par le client web officiel.
+  const headers = {
+    Accept: "application/json",
+    Origin: "https://openfront.io",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+  };
   if (auth) headers.Authorization = `Bearer ${await getJwt(env)}`;
 
   const res = await fetch(API + path, { headers });
