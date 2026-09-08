@@ -26,6 +26,9 @@ window.TEAM = {
      de pouvoir tester sans modifier le Worker déjà en production. */
   localPresenceApi: "http://127.0.0.1:8787",
 
+  /* Nombre de joueurs GAL vise par la jauge de rassemblement sur une map. */
+  rallyTarget: 5,
+
   /* La page n'a ni header ni réglages : tout le monde voit la même chose.
      Voici cette chose. Laisse tel quel pour afficher tous les lobbies,
      du plus rempli au plus vide.

@@ -49,6 +49,11 @@ const cache = new Map();
    visiteurs simultanés ne peuvent donc pas écraser la liste de l'autre. */
 const PRESENCE_TTL_MS = 65000;
 
+/* Un appel au ralliement est un signal bref, pas un nouvel etat permanent.
+   Le conserver quelques secondes permet aussi a un navigateur qui vient de
+   se reconnecter de voir la meme onde que les autres. */
+const RALLY_CALL_TTL_MS = 8000;
+
 /* Une identité Discord vérifiée arrive au Durable Object par cet en-tête,
    posé par le Worker lui-même après contrôle de la signature. Le corps
    envoyé par le navigateur ne peut donc pas revendiquer `verified`. */
@@ -130,6 +135,37 @@ function timingSafeEqual(a, b) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
+}
+
+function cleanRallyCall(input, member, current) {
+  if (!input || typeof input !== "object") return null;
+  const id = String(input.id || "").trim().slice(0, 80);
+  const gameId = String(input.gameId || "").trim().slice(0, 80);
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(id)) return null;
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(gameId) || gameId !== member.gameId) return null;
+
+  const now = Date.now();
+  if (current && current.id === id && Number(current.expiresAt || 0) > now) {
+    return current;
+  }
+  // Un meme navigateur ne peut pas relancer l'animation en boucle.
+  if (current && current.callerId === member.id && now - Number(current.at || 0) < 3000) {
+    return current;
+  }
+  return {
+    id,
+    gameId,
+    callerId: member.id,
+    pseudo: member.pseudo,
+    at: now,
+    expiresAt: now + RALLY_CALL_TTL_MS,
+  };
+}
+
+function publicRallyCall(call) {
+  if (!call || Number(call.expiresAt || 0) <= Date.now()) return null;
+  const { id, gameId, callerId, pseudo, at, expiresAt } = call;
+  return { id, gameId, callerId, pseudo, at, expiresAt };
 }
 
 /* Les mots de passe peuvent avoir des longueurs différentes. On compare
@@ -218,8 +254,8 @@ export class PresenceRoom extends DurableObject {
       return new Response(JSON.stringify({ error: "Identité invalide" }), { status: 400 });
     }
 
-    const members = await this.upsert(member);
-    return new Response(JSON.stringify(this.payload(members)));
+    const snapshot = await this.upsert(member, body.rallyCall);
+    return new Response(JSON.stringify(this.payload(snapshot.members, snapshot.rallyCall)));
   }
 
   async activeMembers() {
@@ -231,20 +267,39 @@ export class PresenceRoom extends DurableObject {
     return members;
   }
 
-  async upsert(member) {
-    const members = await this.activeMembers();
+  async activeRallyCall() {
+    const call = await this.ctx.storage.get("rallyCall");
+    return publicRallyCall(call);
+  }
+
+  async upsert(member, requestedCall) {
+    const [members, currentCall] = await Promise.all([
+      this.activeMembers(),
+      this.activeRallyCall(),
+    ]);
     members[member.id] = member;
-    await this.ctx.storage.put("members", members);
-    return members;
+    const rallyCall = cleanRallyCall(requestedCall, member, currentCall) || currentCall;
+    const writes = { members };
+    if (rallyCall && rallyCall !== currentCall) writes.rallyCall = rallyCall;
+    await this.ctx.storage.put(writes);
+    return { members, rallyCall };
   }
 
-  payload(members) {
+  payload(members, rallyCall) {
     const list = publicMembers(members);
-    return { members: list, online: list.map(member => member.pseudo) };
+    return {
+      members: list,
+      online: list.map(member => member.pseudo),
+      rallyCall: publicRallyCall(rallyCall),
+    };
   }
 
-  async broadcast() {
-    const payload = JSON.stringify(this.payload(await this.activeMembers()));
+  async broadcast(snapshot = null) {
+    const current = snapshot || {
+      members: await this.activeMembers(),
+      rallyCall: await this.activeRallyCall(),
+    };
+    const payload = JSON.stringify(this.payload(current.members, current.rallyCall));
     for (const socket of this.ctx.getWebSockets()) {
       try { socket.send(payload); } catch { /* connexion déjà fermée */ }
     }
@@ -259,8 +314,8 @@ export class PresenceRoom extends DurableObject {
     const member = cleanMember(body, identity);
     if (!member) return;
     socket.serializeAttachment({ id: member.id, identity });
-    await this.upsert(member);
-    await this.broadcast();
+    const snapshot = await this.upsert(member, body.rallyCall);
+    await this.broadcast(snapshot);
   }
 
   async webSocketClose(socket) {

@@ -1133,6 +1133,102 @@ main {
 }
 .card.rallied { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 30px -14px var(--accent); }
 
+@property --rally-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* Le halo et ses effets restent des calques internes : aucune animation ne
+   modifie la taille de la cellule ou la position des cartes voisines. */
+.rallyHalo {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 3px;
+  border-radius: 9px 9px 0 0;
+  background: var(--rally-gradient, conic-gradient(#3aa0ff, #a855f7, #22d3ee, #3aa0ff));
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.card.hasRally .rallyHalo {
+  opacity: .88;
+  animation:
+    rallyHaloSpin var(--rally-speed, 5.5s) linear infinite,
+    rallyHaloBreathe 2.2s ease-in-out infinite alternate;
+}
+.card.rallyComplete {
+  --rally-gradient: conic-gradient(
+    from var(--rally-angle), #fff4ad, #fbbf24, #fffbe6, #d89a08, #fff4ad
+  ) !important;
+  border-color: rgba(251, 191, 36, .9);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, .72), 0 0 32px -9px #fbbf24;
+}
+.card.rallyImminent .rallyHalo {
+  filter: brightness(1.22) saturate(1.18);
+}
+@keyframes rallyHaloSpin { to { --rally-angle: 360deg; } }
+@keyframes rallyHaloBreathe { from { opacity: .58; } to { opacity: 1; } }
+
+.rallyWave {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  top: 48%;
+  width: 34px;
+  aspect-ratio: 1;
+  border: 3px solid rgba(125, 211, 252, .95);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(.35);
+}
+.card.rallyWaveActive .rallyWave {
+  animation: rallyWave 1.4s cubic-bezier(.12, .64, .24, 1) both;
+}
+@keyframes rallyWave {
+  0% {
+    opacity: .95;
+    transform: translate(-50%, -50%) scale(.35);
+    box-shadow: 0 0 22px 8px rgba(58, 160, 255, .6);
+  }
+  72% { opacity: .55; }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(18);
+    box-shadow: 0 0 46px 18px rgba(168, 85, 247, 0);
+  }
+}
+
+.rallyConfetti {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  pointer-events: none;
+}
+.rallyConfetti i {
+  position: absolute;
+  top: -12px;
+  left: var(--confetti-x);
+  width: 5px;
+  height: 10px;
+  border-radius: 2px;
+  background: hsl(var(--confetti-hue) 92% 62%);
+  opacity: 0;
+}
+.card.celebrating .rallyConfetti i {
+  animation: rallyConfetti 1.45s var(--confetti-delay) cubic-bezier(.18, .72, .32, 1) both;
+}
+@keyframes rallyConfetti {
+  0% { opacity: 0; transform: translate3d(0, -8px, 0) rotate(0); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(-22px, 230px, 0) rotate(540deg); }
+}
+
 .cardImage {
   position: relative;
   grid-column: 1 / -1;
@@ -1159,6 +1255,88 @@ main {
   transition: opacity .2s;
 }
 .card:hover .cardImage img { opacity: 1; }
+
+.rallyGoal {
+  position: absolute;
+  z-index: 7;
+  top: 8px;
+  left: 8px;
+  width: min(250px, calc(100% - 102px));
+  padding: 5px 7px 6px;
+  border: 1px solid rgba(58, 160, 255, .46);
+  border-radius: 8px;
+  background: rgba(3, 9, 19, .9);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .34);
+  backdrop-filter: blur(8px);
+}
+.rallyGoalTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rallyGoalLabel {
+  min-width: 0;
+  overflow: hidden;
+  color: #e9f5ff;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.rallyCallButton {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(58, 160, 255, .58);
+  border-radius: 6px;
+  background: rgba(18, 62, 101, .9);
+  color: #dff2ff;
+  font: 800 9px/16px ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter .15s, border-color .15s, background .15s;
+}
+.rallyCallButton:hover, .rallyCallButton:focus-visible {
+  border-color: #7dd3fc;
+  background: rgba(23, 90, 145, .96);
+  filter: brightness(1.12);
+  outline: none;
+}
+.rallyCallButton:disabled {
+  border-color: rgba(251, 191, 36, .65);
+  background: rgba(99, 70, 13, .88);
+  color: #fde68a;
+  cursor: default;
+  filter: none;
+}
+.rallyGauge {
+  height: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+}
+.rallyGauge i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3aa0ff, #22d3ee, #a855f7);
+  transform: scaleX(var(--rally-progress, 0));
+  transform-origin: left center;
+  transition: transform .35s cubic-bezier(.22, 1, .36, 1);
+}
+.card.rallyComplete .rallyGoal {
+  border-color: rgba(251, 191, 36, .8);
+  background: rgba(59, 42, 8, .9);
+}
+.card.rallyComplete .rallyGauge i {
+  background: linear-gradient(90deg, #f59e0b, #fff4ad, #fbbf24);
+}
+.card.rallyControls .badges { top: 51px; }
 
 .cardBar {
   position: absolute;
@@ -1472,7 +1650,37 @@ main {
 }
 .toast.ok { border-color: var(--accent); color: var(--accent); }
 .toast.bad { border-color: var(--bad); color: var(--bad); }
+.toast.rally {
+  border-color: #7dd3fc;
+  color: #dff6ff;
+  box-shadow: 0 0 24px -8px rgba(58, 160, 255, .9), 0 8px 24px rgba(0, 0, 0, .5);
+}
 @keyframes slideIn { from { opacity: 0; transform: translateX(16px); } }
+
+.dispersionAlert {
+  position: fixed;
+  z-index: 70;
+  top: 12px;
+  left: 50%;
+  max-width: calc(100vw - 28px);
+  padding: 8px 14px;
+  border: 1px solid rgba(248, 113, 113, .72);
+  border-radius: 999px;
+  background: rgba(47, 10, 17, .94);
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .25px;
+  white-space: nowrap;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .48), 0 0 25px -10px #f87171;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: dispersionArrive .32s cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes dispersionArrive {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 
 /* ---------------- Responsive ---------------- */
 
@@ -1621,6 +1829,10 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   .card.entering, .card.leaving { animation-duration: .01ms; }
+  .card.hasRally .rallyHalo { animation: none; }
+  .card.rallyWaveActive .rallyWave,
+  .card.celebrating .rallyConfetti i,
+  .dispersionAlert { animation-duration: .01ms; }
   .pigLauncher.opening,
   .slotReel.spinning img,
   .slotLever.pulled .leverArm,

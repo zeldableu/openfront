@@ -82,6 +82,10 @@ const state = {
   presenceWs: null,
   presenceReconnect: 0,
   rallyId: "",
+  pendingRallyCall: null,
+  rallyCall: null,
+  lastRallyCallId: "",
+  wasDispersed: false,
   renderQueued: false,
   domStale: false,
   cardEls: new Map(),
@@ -96,6 +100,8 @@ const el = (tag, cls, txt) => {
 };
 const now = () => Date.now() + state.clockOffset;
 const clanName = () => String((window.TEAM && window.TEAM.name) || "la team");
+const rallyTarget = () => Math.max(1, Math.min(20,
+  Number(window.TEAM && window.TEAM.rallyTarget) || 5));
 
 /* ---------------- Normalisation ---------------- */
 
@@ -526,7 +532,39 @@ function buildCard(g) {
   const bar = el("div", "cardBar");
   bar.append(el("i"));
   const rally = el("div", "cardRally");
-  image.append(img, rally, bar);
+  const halo = el("div", "rallyHalo");
+  halo.setAttribute("aria-hidden", "true");
+  const wave = el("div", "rallyWave");
+  wave.setAttribute("aria-hidden", "true");
+
+  const goal = el("div", "rallyGoal");
+  const goalTop = el("div", "rallyGoalTop");
+  const goalLabel = el("strong", "rallyGoalLabel", `⚔️ 0/${rallyTarget()} GAL prêts`);
+  const callButton = el("button", "rallyCallButton", "📣 Rassemblement ici");
+  callButton.type = "button";
+  callButton.title = "Déclencher un appel au ralliement visible par tous";
+  callButton.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    callRally(g.id);
+  });
+  goalTop.append(goalLabel, callButton);
+  const gauge = el("div", "rallyGauge");
+  gauge.setAttribute("aria-hidden", "true");
+  gauge.append(el("i"));
+  goal.append(goalTop, gauge);
+
+  const confetti = el("div", "rallyConfetti");
+  confetti.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 12; i++) {
+    const piece = el("i");
+    piece.style.setProperty("--confetti-x", `${8 + (i * 83) % 88}%`);
+    piece.style.setProperty("--confetti-delay", `${(i % 4) * 55}ms`);
+    piece.style.setProperty("--confetti-hue", String((i * 47) % 360));
+    confetti.append(piece);
+  }
+
+  image.append(img, halo, wave, confetti, goal, rally, bar);
 
   const text = el("div", "cardText");
   text.append(el("div", "cardTitle"), el("div", "cardMode"), el("div", "badges"));
@@ -542,7 +580,13 @@ function buildCard(g) {
 function updateCard(card, g) {
   const full = g.players >= g.capacity;
   const pct = g.capacity ? Math.min(100, (g.players / g.capacity) * 100) : 0;
-  const soon = g.startsAt > 0 && g.startsAt - now() < 30000;
+  const remaining = g.startsAt - now();
+  const soon = g.startsAt > 0 && remaining < 30000;
+  const rallyMembers = membersForGame(g.id);
+  const target = rallyTarget();
+  const ready = rallyMembers.length;
+  const complete = ready >= target;
+  const imminent = ready > 0 && g.startsAt > 0 && remaining > 0 && remaining <= 10000;
 
   const time = card.querySelector(".time");
   time.className = "time" + (soon ? " soon" : "") + (g.startsAt ? "" : " idle");
@@ -560,7 +604,43 @@ function updateCard(card, g) {
   card.querySelector(".cardMode").textContent =
     `${modeLabel(g)} · ${g.difficulty} · ${g.bots} bots`;
 
-  renderCardRally(card.querySelector(".cardRally"), g.id);
+  renderCardRally(card.querySelector(".cardRally"), g.id, rallyMembers);
+
+  const goal = card.querySelector(".rallyGoal");
+  goal.hidden = !state.pseudo && ready === 0;
+  card.classList.toggle("rallyControls", !goal.hidden);
+  card.querySelector(".rallyGoalLabel").textContent =
+    `${complete ? "🎉" : "⚔️"} ${ready}/${target} GAL prêts`;
+  card.querySelector(".rallyGauge > i").style.setProperty(
+    "--rally-progress", String(Math.min(1, ready / target)));
+
+  const activeCall = state.rallyCall &&
+    Number(state.rallyCall.expiresAt || 0) > Date.now() &&
+    state.rallyCall.gameId === g.id;
+  const pendingCall = state.pendingRallyCall && state.pendingRallyCall.gameId === g.id;
+  const callButton = card.querySelector(".rallyCallButton");
+  callButton.hidden = !state.pseudo;
+  callButton.disabled = Boolean(activeCall || pendingCall);
+  callButton.textContent = activeCall || pendingCall ? "📣 Appel lancé !" : "📣 Rassemblement ici";
+
+  card.classList.toggle("hasRally", ready > 0);
+  card.classList.toggle("rallyComplete", complete);
+  card.classList.toggle("rallyImminent", imminent);
+  if (ready > 0) {
+    card.style.setProperty("--rally-gradient", rallyGradient(rallyMembers));
+  } else {
+    card.style.removeProperty("--rally-gradient");
+  }
+  if (imminent) {
+    const acceleration = 1 - Math.max(0, remaining) / 10000;
+    card.style.setProperty("--rally-speed", `${(3.2 - acceleration * 1.8).toFixed(2)}s`);
+  } else {
+    card.style.removeProperty("--rally-speed");
+  }
+
+  const wasComplete = card.dataset.rallyComplete === "1";
+  card.dataset.rallyComplete = complete ? "1" : "0";
+  if (complete && !wasComplete) celebrateRally(card);
 
   const badges = card.querySelector(".badges");
   if (badges.dataset.sig !== g.badges.join("|")) {
@@ -729,6 +809,8 @@ function logout() {
   state.ofAccount = null;
   state.ofStats = null;
   state.rallyId = "";
+  state.pendingRallyCall = null;
+  state.rallyCall = null;
   state.members = [];
   const socket = state.presenceWs;
   state.presenceWs = null;
@@ -780,11 +862,13 @@ function presenceBase() {
 /* Quand la session Discord est là, le Worker ignore `id` et `pseudo` et
    impose ceux du jeton : on les envoie quand même pour le repli pseudo. */
 function presencePayload() {
-  return {
+  const payload = {
     id: selfId(),
     pseudo: state.pseudo,
     gameId: state.rallyId,
   };
+  if (state.pendingRallyCall) payload.rallyCall = state.pendingRallyCall;
+  return payload;
 }
 
 function fallbackMember(name = state.pseudo) {
@@ -805,6 +889,21 @@ function applyPresence(data) {
     state.members = data.online.filter(Boolean).map(fallbackMember);
   }
   state.online = state.members.map(member => member.pseudo);
+  const call = data && data.rallyCall &&
+    Number(data.rallyCall.expiresAt || 0) > Date.now()
+      ? data.rallyCall
+      : null;
+  state.rallyCall = call;
+  if (call && state.pendingRallyCall && (
+    call.id === state.pendingRallyCall.id ||
+    (call.callerId === selfId() && call.gameId === state.pendingRallyCall.gameId)
+  )) {
+    state.pendingRallyCall = null;
+  }
+  if (call && call.id !== state.lastRallyCallId) {
+    state.lastRallyCallId = call.id;
+    triggerRallyWave(call);
+  }
   state.presenceError = false;
   renderPresence();
   scheduleRender();
@@ -877,13 +976,34 @@ async function sendHeartbeat() {
   }
 }
 
-function selectRally(gameId) {
+function setLocalRally(gameId) {
   state.rallyId = String(gameId || "");
   const self = state.members.find(member => member.id === selfId());
   if (self) self.gameId = state.rallyId;
   else if (state.pseudo) state.members.push(fallbackMember());
   renderPresence();
   scheduleRender();
+}
+
+function selectRally(gameId) {
+  setLocalRally(gameId);
+  sendHeartbeat();
+}
+
+function callRally(gameId) {
+  if (!state.pseudo) {
+    toast("Entre ton pseudo avant de lancer le rassemblement.", "bad");
+    return;
+  }
+  const currentCall = state.rallyCall;
+  if ((state.pendingRallyCall && state.pendingRallyCall.gameId === gameId) ||
+      (currentCall && currentCall.gameId === gameId &&
+       Number(currentCall.expiresAt || 0) > Date.now())) return;
+  setLocalRally(gameId);
+  state.pendingRallyCall = {
+    id: crypto.randomUUID(),
+    gameId: state.rallyId,
+  };
   sendHeartbeat();
 }
 
@@ -934,8 +1054,40 @@ function visibleMembers() {
   return state.pseudo ? [fallbackMember()] : [];
 }
 
-function renderCardRally(host, gameId) {
-  const members = visibleMembers().filter(member => member.gameId === gameId);
+function membersForGame(gameId) {
+  return visibleMembers().filter(member => member.gameId === gameId);
+}
+
+function rallyGradient(members) {
+  const hues = members.map(member => hashText(member.id || member.pseudo) % 360);
+  if (hues.length === 1) hues.push((hues[0] + 85) % 360, (hues[0] + 190) % 360);
+  const colors = hues.map(hue => `hsl(${hue} 92% 63%)`);
+  colors.push(colors[0]);
+  return `conic-gradient(from var(--rally-angle), ${colors.join(", ")})`;
+}
+
+function triggerRallyWave(call) {
+  setTimeout(() => {
+    const card = state.cardEls.get(call.gameId);
+    if (!card || !card.isConnected) return;
+    card.classList.remove("rallyWaveActive");
+    // Relancer l'animation meme si deux appels distincts arrivent rapidement.
+    void card.offsetWidth;
+    card.classList.add("rallyWaveActive");
+    setTimeout(() => card.classList.remove("rallyWaveActive"), 1500);
+    const game = state.games.get(call.gameId);
+    toast(`📣 ${call.pseudo} appelle au ralliement${game ? ` sur ${game.map}` : ""} !`, "rally");
+  }, 180);
+}
+
+function celebrateRally(card) {
+  card.classList.remove("celebrating");
+  void card.offsetWidth;
+  card.classList.add("celebrating");
+  setTimeout(() => card.classList.remove("celebrating"), 1900);
+}
+
+function renderCardRally(host, gameId, members = membersForGame(gameId)) {
   const sig = members.map(member => `${member.id}:${member.pseudo}:${member.avatar || ""}`).join("|");
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
@@ -971,6 +1123,18 @@ function renderPresence() {
   showLoginBox(!state.pseudo);
   renderProfile();
   renderRallyDock();
+  renderDispersionAlert();
+}
+
+function renderDispersionAlert() {
+  const mapIds = new Set(visibleMembers().map(member => member.gameId).filter(Boolean));
+  const dispersed = mapIds.size >= 3;
+  const alert = $("dispersionAlert");
+  alert.hidden = !dispersed;
+  if (dispersed && !state.wasDispersed) {
+    toast("🔀 Les Gaulois sont dispersés !", "bad");
+  }
+  state.wasDispersed = dispersed;
 }
 
 /* ---------------- Profil ----------------
