@@ -89,6 +89,7 @@ const state = {
   renderQueued: false,
   domStale: false,
   cardEls: new Map(),
+  mapPages: { ffa: 0, team: 0, special: 0 },
 };
 
 const $ = id => document.getElementById(id);
@@ -391,7 +392,7 @@ function stopCardMove(node) {
 function snapshotCardPositions(live) {
   const positions = new Map();
   for (const [id, node] of state.cardEls) {
-    if (!live.has(id) || !node.isConnected) continue;
+    if (!live.has(id) || !node.isConnected || node.hidden) continue;
     positions.set(id, node.getBoundingClientRect());
     stopCardMove(node);
   }
@@ -403,7 +404,7 @@ function animateCardReflow(positions) {
 
   for (const [id, first] of positions) {
     const node = state.cardEls.get(id);
-    if (!node || !node.isConnected) continue;
+    if (!node || !node.isConnected || node.hidden) continue;
 
     const last = node.getBoundingClientRect();
     const dx = first.left - last.left;
@@ -452,6 +453,12 @@ function render() {
       // La carte sortante devient un calque à sa position exacte : elle peut
       // s'animer sans occuper une rangée de grille ni pousser les survivantes.
       const host = node.parentElement;
+      if (!host || node.hidden) {
+        stopCardMove(node);
+        state.cardEls.delete(id);
+        node.remove();
+        continue;
+      }
       const hostRect = host.getBoundingClientRect();
       const rect = node.getBoundingClientRect();
       stopCardMove(node);
@@ -471,11 +478,27 @@ function render() {
     const games = buckets[col.cat];
     $(col.count).textContent = games.length;
     const host = $(col.cards);
+    const rows = window.OpenFrontLobbyLayout.rowsForHeight(host.clientHeight);
+    const slice = window.OpenFrontLobbyLayout.pageOf(games.length, rows, state.mapPages[col.cat]);
+    state.mapPages[col.cat] = slice.page;
+    host.style.setProperty("--map-rows", String(rows));
+    const pageLabel = $(col.cards + "Page");
+    const label = `Page ${slice.page + 1} / ${slice.pages}`;
+    if (pageLabel.textContent !== label) pageLabel.textContent = label;
+    pageLabel.title = games.length ? `Maps ${slice.start + 1} à ${slice.end} sur ${games.length}` : "Aucune map";
+    $(col.cards + "Prev").disabled = slice.page === 0;
+    $(col.cards + "Next").disabled = slice.page === slice.pages - 1;
     const desiredNodes = [];
-    for (const g of games) {
+    for (const [index, g] of games.entries()) {
       let node = state.cardEls.get(g.id);
       if (!node) { node = buildCard(g); state.cardEls.set(g.id, node); }
       updateCard(node, g);
+      const wasHidden = node.hidden;
+      node.hidden = index < slice.start || index >= slice.end;
+      if (node.hidden) stopCardMove(node);
+      else if (wasHidden && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+      }
       desiredNodes.push(node);
     }
 
@@ -538,9 +561,7 @@ function buildCard(g) {
   wave.setAttribute("aria-hidden", "true");
 
   const goal = el("div", "rallyGoal");
-  const goalTop = el("div", "rallyGoalTop");
-  const goalLabel = el("strong", "rallyGoalLabel", `⚔️ 0/${rallyTarget()} GAL prêts`);
-  const callButton = el("button", "rallyCallButton", "📣 Rassemblement ici");
+  const callButton = el("button", "rallyCallButton", "📣 Rallier");
   callButton.type = "button";
   callButton.title = "Déclencher un appel au ralliement visible par tous";
   callButton.addEventListener("click", event => {
@@ -548,11 +569,7 @@ function buildCard(g) {
     event.stopPropagation();
     callRally(g.id);
   });
-  goalTop.append(goalLabel, callButton);
-  const gauge = el("div", "rallyGauge");
-  gauge.setAttribute("aria-hidden", "true");
-  gauge.append(el("i"));
-  goal.append(goalTop, gauge);
+  goal.append(callButton);
 
   const confetti = el("div", "rallyConfetti");
   confetti.setAttribute("aria-hidden", "true");
@@ -564,21 +581,25 @@ function buildCard(g) {
     confetti.append(piece);
   }
 
-  image.append(img, halo, wave, confetti, goal, rally, bar);
+  image.append(img, halo, wave, confetti, rally, bar);
 
   const text = el("div", "cardText");
-  text.append(el("div", "cardTitle"), el("div", "cardMode"), el("div", "badges"));
+  const heading = el("div", "cardHeading");
+  heading.append(el("div", "cardTitle"));
+  const details = el("div", "cardDetails");
+  details.append(el("div", "cardMode"), goal);
+  text.append(heading, details);
+  image.append(el("div", "badges"));
 
-  const side = el("div", "cardSide");
-  side.append(el("span", "players"), el("span", "time"));
+  image.append(el("span", "players"), el("span", "time"));
 
-  card.append(image, text, side);
+  card.append(image, text);
   setTimeout(() => card.classList.remove("entering"), 340);
   return card;
 }
 
 function updateCard(card, g) {
-  const full = g.players >= g.capacity;
+  const full = g.capacity > 0 && g.players >= g.capacity;
   const pct = g.capacity ? Math.min(100, (g.players / g.capacity) * 100) : 0;
   const remaining = g.startsAt - now();
   const soon = g.startsAt > 0 && remaining < 30000;
@@ -594,25 +615,22 @@ function updateCard(card, g) {
 
   const players = card.querySelector(".players");
   players.className = "players" + (full ? " full" : "");
-  players.textContent = `${g.players} / ${g.capacity}`;
+  players.textContent = g.capacity > 0 ? `${g.players} / ${g.capacity}` : `${g.players} joueurs`;
 
   const fill = card.querySelector(".cardBar > i");
   fill.className = full ? "full" : "";
   fill.style.setProperty("--progress", String(pct / 100));
 
   card.querySelector(".cardTitle").textContent = g.map;
+  card.querySelector(".cardTitle").title = g.map;
   card.querySelector(".cardMode").textContent =
     `${modeLabel(g)} · ${g.difficulty} · ${g.bots} bots`;
+  card.querySelector(".cardMode").title = card.querySelector(".cardMode").textContent;
 
   renderCardRally(card.querySelector(".cardRally"), g.id, rallyMembers);
 
   const goal = card.querySelector(".rallyGoal");
-  goal.hidden = !state.pseudo && ready === 0;
-  card.classList.toggle("rallyControls", !goal.hidden);
-  card.querySelector(".rallyGoalLabel").textContent =
-    `${complete ? "🎉" : "⚔️"} ${ready}/${target} GAL prêts`;
-  card.querySelector(".rallyGauge > i").style.setProperty(
-    "--rally-progress", String(Math.min(1, ready / target)));
+  goal.hidden = !state.pseudo;
 
   const activeCall = state.rallyCall &&
     Number(state.rallyCall.expiresAt || 0) > Date.now() &&
@@ -621,7 +639,8 @@ function updateCard(card, g) {
   const callButton = card.querySelector(".rallyCallButton");
   callButton.hidden = !state.pseudo;
   callButton.disabled = Boolean(activeCall || pendingCall);
-  callButton.textContent = activeCall || pendingCall ? "📣 Appel lancé !" : "📣 Rassemblement ici";
+  callButton.textContent = activeCall || pendingCall ? "📣 Appel lancé" : "📣 Rallier";
+  callButton.setAttribute("aria-label", `Rassemblement ici : ${g.map}`);
 
   card.classList.toggle("hasRally", ready > 0);
   card.classList.toggle("rallyComplete", complete);
@@ -646,7 +665,9 @@ function updateCard(card, g) {
   if (badges.dataset.sig !== g.badges.join("|")) {
     badges.dataset.sig = g.badges.join("|");
     badges.innerHTML = "";
-    for (const b of g.badges) badges.append(el("span", "badge", b));
+    for (const b of g.badges.slice(0, 2)) badges.append(el("span", "badge", b));
+    if (g.badges.length > 2) badges.append(el("span", "badge", `+${g.badges.length - 2}`));
+    badges.title = g.badges.join(" · ");
   }
 
   card.classList.toggle("rallied", g.id === state.rallyId);
@@ -2257,6 +2278,19 @@ function init() {
   }
 
   initWinsSlider();
+  for (const col of COLUMNS) {
+    for (const [suffix, step] of [["Prev", -1], ["Next", 1]]) {
+      $(col.cards + suffix).onclick = () => {
+        state.mapPages[col.cat] += step;
+        render();
+      };
+    }
+  }
+  if (typeof ResizeObserver !== "undefined") {
+    const layoutObserver = new ResizeObserver(scheduleRender);
+    layoutObserver.observe($("board"));
+  }
+  window.addEventListener("resize", scheduleRender);
   initSlotMachine();
   loadTeamStats();
   setInterval(loadTeamStats, STATS_REFRESH_MS);

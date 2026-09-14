@@ -13,8 +13,10 @@ reste compact en bas ; leurs pistes horizontales restent navigables.
 
 Les lobbies apparaissent et disparaissent avec une transition. Un clic ouvre la
 partie OpenFront dans un nouvel onglet afin de conserver le tableau disponible.
-La grille centrale conserve toujours six cellules fixes, deux par catégorie :
-la disparition d'un lobby laisse une cellule vide sans agrandir les autres maps.
+La grille centrale affiche une à trois cellules fixes par catégorie selon la
+hauteur disponible. Les flèches sous chaque colonne donnent accès à tous les
+lobbies, même quand OpenFront en propose davantage : les cartes ne sont jamais
+écrasées et la dernière page conserve la même taille de cellules.
 Ni header, ni menu, ni réglage : on ouvre, on voit les parties sur le fond GAL,
 on rejoint.
 

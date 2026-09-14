@@ -1076,15 +1076,13 @@ main {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  grid-template-rows: repeat(var(--map-rows, 2), minmax(0, 1fr));
   gap: 8px;
 }
 
 /* ---------------- Carte ---------------- */
 
-/* Grande carte verticale inspirée de la grille OpenFront : la map occupe
-   tout l'espace flexible, les informations restent dans un bandeau dessous. */
+/* La hauteur dépend de l'écran, jamais du nombre de lobbies disponibles. */
 .card {
   position: relative;
   display: grid;
@@ -1280,34 +1278,7 @@ main {
 .card:hover .cardImage img { opacity: 1; }
 
 .rallyGoal {
-  position: absolute;
-  z-index: 7;
-  top: 8px;
-  left: 8px;
-  width: min(250px, calc(100% - 102px));
-  padding: 5px 7px 6px;
-  border: 1px solid rgba(58, 160, 255, .46);
-  border-radius: 8px;
-  background: rgba(3, 9, 19, .9);
-  box-shadow: 0 5px 16px rgba(0, 0, 0, .34);
-  backdrop-filter: blur(8px);
-}
-.rallyGoalTop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.rallyGoalLabel {
-  min-width: 0;
-  overflow: hidden;
-  color: #e9f5ff;
-  font-size: 10px;
-  font-weight: 850;
-  line-height: 18px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
+  flex: none;
 }
 .rallyCallButton {
   flex: none;
@@ -1317,7 +1288,7 @@ main {
   border-radius: 6px;
   background: rgba(18, 62, 101, .9);
   color: #dff2ff;
-  font: 800 9px/16px ui-sans-serif, system-ui, sans-serif;
+  font: 750 10px/18px ui-sans-serif, system-ui, sans-serif;
   white-space: nowrap;
   cursor: pointer;
   transition: filter .15s, border-color .15s, background .15s;
@@ -1335,31 +1306,48 @@ main {
   cursor: default;
   filter: none;
 }
-.rallyGauge {
-  height: 4px;
-  margin-top: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .12);
-}
-.rallyGauge i {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #3aa0ff, #22d3ee, #a855f7);
-  transform: scaleX(var(--rally-progress, 0));
-  transform-origin: left center;
-  transition: transform .35s cubic-bezier(.22, 1, .36, 1);
-}
-.card.rallyComplete .rallyGoal {
+.card.rallyComplete .rallyCallButton {
   border-color: rgba(251, 191, 36, .8);
   background: rgba(59, 42, 8, .9);
 }
-.card.rallyComplete .rallyGauge i {
-  background: linear-gradient(90deg, #f59e0b, #fff4ad, #fbbf24);
+
+.colNav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 3px;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
-.card.rallyControls .badges { top: 51px; }
+.mapPageButton {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line-hi);
+  border-radius: 7px;
+  background: rgba(4, 18, 31, .92);
+  color: var(--accent);
+  font: 22px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.mapPageButton:hover:not(:disabled), .mapPageButton:focus-visible {
+  border-color: var(--accent);
+  background: var(--card-hi);
+  outline: none;
+}
+.mapPageButton:disabled { opacity: .3; cursor: default; }
+.cardRally {
+  bottom: 16px;
+  right: 100px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.cardRally .rallyPlayer, .cardRallyMore { flex: none; }
 
 .cardBar {
   position: absolute;
@@ -1385,13 +1373,17 @@ main {
 .cardBar > i.full { background: var(--warn); }
 
 .cardText {
-  grid-column: 1;
+  grid-column: 1 / -1;
   min-width: 0;
-  padding: 9px 12px 10px;
+  padding: 8px 10px 9px;
 }
+.cardHeading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cardHeading .cardTitle { flex: 1; min-width: 0; }
+.cardDetails { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
+.cardDetails .cardMode { flex: 1; min-width: 0; margin-top: 0; }
 .cardTitle {
   font-weight: 750;
-  font-size: 17px;
+  font-size: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1413,9 +1405,8 @@ main {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-width: calc(100% - 118px);
+  max-width: calc(100% - 95px);
   margin: 0;
-  pointer-events: none;
 }
 .badges:empty { display: none; }
 .badge {
@@ -1434,7 +1425,7 @@ main {
 .players {
   position: absolute;
   right: 10px;
-  bottom: 57px;
+  bottom: 16px;
   z-index: 3;
   padding: 3px 8px;
   border-radius: 6px;
