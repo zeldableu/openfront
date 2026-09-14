@@ -30,5 +30,17 @@ const frame = [0, 7, ...uint(serverTime), 1, 0, 1,
   1, ...str("game123"), 42, ...uint(serverTime + 10000), 0, ...str("build-test")];
 assert.equal(decode(frame).games.ffa[0].gameID, "game123");
 assert.equal(decode(frame).games.ffa[0].numClients, 42);
+
+// GameConfig v0.34: maxPlayers, trusted=true and playerTeams=2. The
+// inserted trusted bits must not shift capacity, teams or subsequent fields.
+const config = [0, 0, 0, 52, 128, 0,
+  24, 1, 1, 1, 1, 1, 0, 100, 10, 0, 2];
+const configuredFrame = [0, 0, ...uint(serverTime), 1, 0, 1,
+  2, ...str("game-config"), 3, ...config, 0];
+const game = decode(configuredFrame).games.ffa[0];
+assert.equal(game.gameConfig.gameMap, "Cape Cod");
+assert.equal(game.gameConfig.trusted, true);
+assert.equal(game.gameConfig.maxPlayers, 10);
+assert.equal(game.gameConfig.playerTeams, 2);
 assert.throws(() => decode([0, 7]), /tronquee/);
 console.log("Lobby v0.34 regression tests passed");
