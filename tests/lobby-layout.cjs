@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { rowsForHeight, pageOf } = require("../lobby-layout.js");
+const { rowsForHeight, pageOf, prioritize } = require("../lobby-layout.js");
 assert.equal(rowsForHeight(0), 1);
 assert.equal(rowsForHeight(380), 1);
 assert.equal(rowsForHeight(390), 2);
@@ -19,4 +19,12 @@ for (const count of [1, 6, 7, 18, 50]) {
     assert.deepEqual(seen, Array.from({ length: count }, (_, i) => i));
   }
 }
+const crowded = { id: "crowded", map: "Crowded", players: 34, capacity: 92 };
+const almostFull = { id: "almost", map: "Almost", players: 20, capacity: 21 };
+const active = { id: "active", map: "Active", players: 2, capacity: 40 };
+const emptyA = { id: "empty-a", map: "A", players: 0, capacity: 10 };
+const emptyB = { id: "empty-b", map: "B", players: 0, capacity: 100 };
+assert.deepEqual(prioritize([emptyA, active, crowded, emptyB, almostFull]).map(g => g.id), ["crowded", "almost", "active", "empty-a", "empty-b"]);
+assert.deepEqual(prioritize([emptyB, emptyA], ["empty-b", "empty-a"]).map(g => g.id), ["empty-b", "empty-a"]);
+assert.deepEqual(prioritize([{ ...active, players: 5 }, { ...almostFull, players: 5 }], ["active", "almost"]).map(g => g.id), ["almost", "active"]);
 console.log("Lobby layout: adaptive rows, last-page clamping and all maps reachable OK");

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lobbies OpenFront</title>
 <meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
-<link rel="stylesheet" href="styles.css?v=20260914-4">
+<link rel="stylesheet" href="styles.css?v=20260915-1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
 </head>
 <body>
@@ -198,6 +198,19 @@
 
 <dialog class="playerDialog" id="playerDialog" aria-labelledby="playerDetailName"><button class="dialogClose btn ghost" id="closePlayerDialog" type="button" aria-label="Fermer le détail du joueur">×</button><span class="eyebrow">UN GAULOIS, UN BILAN</span><h2 id="playerDetailName">Joueur</h2><div id="playerDetailContent"></div></dialog>
 
+<dialog class="rallySpotlight" id="rallySpotlight" aria-labelledby="rallySpotlightMap">
+  <button class="dialogClose btn ghost" id="closeRallySpotlight" type="button" aria-label="Fermer et revenir aux maps">×</button>
+  <p class="rallySpotlightCaller" id="rallySpotlightCaller">Appel au ralliement</p>
+  <button class="rallySpotlightCard" id="rallySpotlightJoin" type="button" aria-label="Rejoindre la partie appelée">
+    <img id="rallySpotlightImage" alt="">
+    <span class="rallySpotlightShade"></span>
+    <span class="rallySpotlightCopy"><small>APPEL AU RALLIEMENT</small><strong id="rallySpotlightMap">Map</strong><span id="rallySpotlightMode"></span></span>
+    <b id="rallySpotlightPlayers"></b>
+  </button>
+  <div class="rallySpotlightSquad" id="rallySpotlightSquad"></div>
+  <p class="muted">Clique la map pour la rejoindre · clique autour pour revenir au tableau.</p>
+</dialog>
+
 <div class="dispersionAlert" id="dispersionAlert" role="status" aria-live="polite" hidden>
   <span aria-hidden="true">🔀</span> Les Gaulois sont dispersés !
 </div>
@@ -264,8 +277,8 @@
 
 <script src="team.config.js?v=20260908-1"></script>
 <script src="lobby-wire.js?v=20260914-1"></script>
-<script src="lobby-layout.js?v=20260914-2"></script>
+<script src="lobby-layout.js?v=20260915-1"></script>
 <script src="team-history.js?v=20260914-4"></script>
-<script src="app.js?v=20260914-4"></script>
+<script src="app.js?v=20260915-1"></script>
 </body>
 </html>

@@ -1970,6 +1970,101 @@ main { padding: 14px 18px 0; overflow: hidden; }
 .playerDialog .statCell { padding: 14px; }
 .playerDialog .statCell strong { font-size: 20px; }
 .playerDialog h3 { margin-top: 24px; }
+.rallySpotlight {
+  width: min(760px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  overflow: visible;
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(7, 18, 34, .98), rgba(2, 10, 22, .98));
+  padding: 24px;
+  border: 1px solid #66c9ff;
+  border-radius: 22px;
+  box-shadow: 0 0 0 1px #3aa0ff55, 0 0 55px #168ee077, 0 36px 110px #000e;
+  animation: rallySpotlightIn .28s cubic-bezier(.2,.9,.25,1);
+}
+.rallySpotlight::backdrop {
+  background: rgba(0, 4, 13, .82);
+  backdrop-filter: blur(10px) saturate(.7);
+}
+.rallySpotlightCaller {
+  margin: 0 44px 15px;
+  color: #8dd8ff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .11em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.rallySpotlightCard {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  width: 100%;
+  min-height: clamp(300px, 52vh, 480px);
+  overflow: hidden;
+  padding: 0;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  background: #06101f;
+  border: 2px solid #5bc5ff;
+  border-radius: 17px;
+  box-shadow: 0 0 0 4px #44baff22, 0 0 38px #2d9fff66, inset 0 0 45px #0b4b7955;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.rallySpotlightCard:hover,
+.rallySpotlightCard:focus-visible {
+  transform: translateY(-2px);
+  border-color: #d9f5ff;
+  box-shadow: 0 0 0 5px #6fd0ff33, 0 0 52px #37b4ff99, inset 0 0 45px #0b4b7955;
+  outline: none;
+}
+.rallySpotlightCard img,
+.rallySpotlightShade { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rallySpotlightCard img { object-fit: cover; }
+.rallySpotlightShade {
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(2,8,18,.05) 25%, rgba(2,8,18,.45) 58%, rgba(2,8,18,.98) 100%);
+}
+.rallySpotlightCopy {
+  position: absolute;
+  z-index: 2;
+  left: clamp(18px, 4vw, 30px);
+  right: clamp(18px, 4vw, 30px);
+  bottom: clamp(18px, 4vw, 30px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+.rallySpotlightCopy small { color: #73d0ff; font-size: 11px; font-weight: 900; letter-spacing: .13em; }
+.rallySpotlightCopy strong { max-width: 80%; font-size: clamp(30px, 6vw, 54px); line-height: .98; overflow-wrap: anywhere; text-shadow: 0 3px 18px #000; }
+.rallySpotlightCopy span { color: #bfd0e2; font-size: clamp(12px, 2vw, 15px); }
+#rallySpotlightPlayers {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  right: 16px;
+  padding: 8px 11px;
+  color: #f6fbff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  background: rgba(2, 9, 20, .88);
+  border: 1px solid #62c8ff;
+  border-radius: 9px;
+  box-shadow: 0 6px 18px #0008;
+}
+.rallySpotlightSquad { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 15px; }
+.rallySpotlightSquad .rallyPlayer { width: auto; max-width: 100%; }
+.rallySpotlight > .muted { margin: 13px 0 0; font-size: 11px; text-align: center; }
+@keyframes rallySpotlightIn {
+  from { opacity: 0; transform: translateY(18px) scale(.965); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rallySpotlight { animation: none; }
+  .rallySpotlightCard { transition: none; }
+}
 .playView .empty { grid-column: 1; grid-row: 1; align-self: center; }
 @media (min-width: 1500px) { .appHeader { padding-left: 30px; padding-right: 30px; } main { padding-left: 30px; padding-right: 30px; } }
 @media (max-width: 1200px) {
@@ -2046,12 +2141,20 @@ main { padding: 14px 18px 0; overflow: hidden; }
   .profileLayout .profile { padding: 18px; }
   .profileLayout .profileHero strong { font-size: 20px; }
   .playerDialog { padding: 22px 16px; }
+  .rallySpotlight { width: calc(100vw - 16px); padding: 16px 12px 14px; border-radius: 16px; }
+  .rallySpotlightCard { min-height: min(55vh, 390px); border-radius: 13px; }
+  .rallySpotlightCopy strong { max-width: 100%; }
+  .rallySpotlight > .muted { line-height: 1.4; }
 }
 @media (max-height: 650px) and (min-width: 601px) {
   :root { --feed-height: 125px; }
   .appHeader { min-height: 56px; padding-top: 6px; padding-bottom: 6px; }
   .headerBrand > span { font-size: 23px; }
   .playView .rallyWaiting { min-height: 40px; }
+  .rallySpotlight { padding: 14px 18px 12px; }
+  .rallySpotlightCard { min-height: min(58vh, 330px); }
+  .rallySpotlightSquad { margin-top: 8px; }
+  .rallySpotlight > .muted { margin-top: 7px; }
 }
 .rankingMasthead { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px; align-items:center; border-color:rgba(207,170,80,.45); background:linear-gradient(110deg,rgba(43,36,18,.88),rgba(8,18,32,.96) 50%); margin-bottom:18px; }
 .rankingMasthead > div { display:flex; flex-direction:column; gap:9px; min-width:0; }

@@ -85,6 +85,7 @@ const state = {
   pendingRallyCall: null,
   rallyCall: null,
   lastRallyCallId: "",
+  lastHornCallId: "",
   wasDispersed: false,
   renderQueued: false,
   domStale: false,
@@ -330,24 +331,19 @@ function applyMessage(msg) {
 
 /* ---------------- Sélection & ordre ---------------- */
 
-/* L'ordre initial suit le tri configuré. Ensuite, les cartes déjà visibles
-   gardent leur ordre relatif et les nouveaux lobbies sont ajoutés à la fin :
-   une disparition ne doit jamais provoquer un second tri haut-bas. */
+/* Les lobbies peuplés doivent rester sur la première page. Le tri ne change
+   l'ordre que lorsqu'un compteur dépasse réellement un autre ; à égalité,
+   prioritize() conserve l'ordre précédent et évite le clignotement. */
 function orderedGames() {
   const conf = (window.TEAM && window.TEAM.defaultView) || {};
   const sig = [...state.games.keys()].sort().join(",");
 
-  if (sig !== state.orderSig) {
-    const liveIds = new Set(state.games.keys());
-    const survivors = state.order.filter(id => liveIds.has(id));
-    const known = new Set(survivors);
-    const newcomers = [...state.games.values()]
-      .filter(game => !known.has(game.id))
-      .sort(SORTS[conf.sort] || SORTS.playersDesc)
-      .map(g => g.id);
-    state.order = [...survivors, ...newcomers];
-    state.orderSig = sig;
-  }
+  const games = [...state.games.values()];
+  const prioritized = conf.sort === "playersDesc"
+    ? window.OpenFrontLobbyLayout.prioritize(games, state.order)
+    : games.sort(SORTS[conf.sort] || SORTS.playersDesc);
+  state.order = prioritized.map(game => game.id);
+  state.orderSig = sig;
 
   let list = state.order.map(id => state.games.get(id)).filter(Boolean);
 
@@ -1032,6 +1028,8 @@ function callRally(gameId) {
     id: crypto.randomUUID(),
     gameId: state.rallyId,
   };
+  primeRallyHorn();
+  playRallyHorn(state.pendingRallyCall.id);
   sendHeartbeat();
 }
 
@@ -1097,15 +1095,85 @@ function rallyGradient(members) {
 function triggerRallyWave(call) {
   setTimeout(() => {
     const card = state.cardEls.get(call.gameId);
-    if (!card || !card.isConnected) return;
-    card.classList.remove("rallyWaveActive");
-    // Relancer l'animation meme si deux appels distincts arrivent rapidement.
-    void card.offsetWidth;
-    card.classList.add("rallyWaveActive");
-    setTimeout(() => card.classList.remove("rallyWaveActive"), 1500);
+    if (card && card.isConnected) {
+      card.classList.remove("rallyWaveActive");
+      // Relancer l'animation meme si deux appels distincts arrivent rapidement.
+      void card.offsetWidth;
+      card.classList.add("rallyWaveActive");
+      setTimeout(() => card.classList.remove("rallyWaveActive"), 1500);
+    }
     const game = state.games.get(call.gameId);
     toast(`📣 ${call.pseudo} appelle au ralliement${game ? ` sur ${game.map}` : ""} !`, "rally");
+    playRallyHorn(call.id);
+    showRallySpotlight(call);
   }, 180);
+}
+
+let hornContext = null;
+function primeRallyHorn() {
+  const Audio = window.AudioContext || window.webkitAudioContext;
+  if (!Audio) return null;
+  if (!hornContext) hornContext = new Audio();
+  if (hornContext.state === "suspended") hornContext.resume().catch(() => {});
+  return hornContext;
+}
+
+/* A synthetic foghorn avoids a large audio download. Browser autoplay rules
+   still apply until the visitor has interacted with the page once. */
+function playRallyHorn(callId) {
+  if (callId && state.lastHornCallId === callId) return;
+  const ctx = hornContext;
+  /* Ne pas creer un contexte audio depuis un message distant : un navigateur
+     sans interaction utilisateur le reprendrait plus tard et jouerait la
+     corne en retard. Une interaction locale l'arme pour les appels suivants. */
+  if (!ctx || ctx.state !== "running") return;
+  state.lastHornCallId = callId || state.lastHornCallId;
+  const start = ctx.currentTime + .025;
+  const master = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(520, start);
+  master.gain.setValueAtTime(.0001, start);
+  master.gain.exponentialRampToValueAtTime(.17, start + .12);
+  master.gain.setValueAtTime(.17, start + 1.15);
+  master.gain.exponentialRampToValueAtTime(.0001, start + 1.85);
+  filter.connect(master).connect(ctx.destination);
+  for (const [frequency, volume, detune] of [[73.4, .7, -4], [110, .34, 3], [146.8, .2, -7]]) {
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = frequency < 100 ? "sawtooth" : "sine";
+    oscillator.frequency.setValueAtTime(frequency, start);
+    oscillator.detune.setValueAtTime(detune, start);
+    oscillator.detune.linearRampToValueAtTime(detune + 9, start + 1.85);
+    gain.gain.value = volume;
+    oscillator.connect(gain).connect(filter);
+    oscillator.start(start);
+    oscillator.stop(start + 1.9);
+  }
+}
+
+function showRallySpotlight(call) {
+  const game = state.games.get(call.gameId);
+  if (!game) return;
+  const dialog = $("rallySpotlight");
+  dialog.dataset.gameId = game.id;
+  $("rallySpotlightCaller").textContent = `${call.pseudo} sonne le ralliement`;
+  $("rallySpotlightMap").textContent = game.map;
+  $("rallySpotlightMode").textContent = `${modeLabel(game)} · ${game.difficulty} · ${game.bots} bots`;
+  $("rallySpotlightPlayers").textContent = game.capacity > 0 ? `${game.players} / ${game.capacity} joueurs` : `${game.players} joueurs`;
+  const image = $("rallySpotlightImage");
+  image.src = THUMB_URL(game.slug);
+  image.alt = `Carte ${game.map}`;
+  const waiting = membersForGame(game.id);
+  $("rallySpotlightSquad").replaceChildren(...waiting.map(member => playerMarker(member)));
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeRallySpotlight(returnToMaps = true) {
+  const dialog = $("rallySpotlight");
+  const gameId = dialog.dataset.gameId || "";
+  if (dialog.open) dialog.close();
+  if (returnToMaps) focusGame(gameId);
 }
 
 function celebrateRally(card) {
@@ -2708,11 +2776,30 @@ function initSiteShell() {
     const rect = dialog.getBoundingClientRect();
     if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
   };
+  $("closeRallySpotlight").onclick = () => closeRallySpotlight(true);
+  $("rallySpotlight").onclick = event => {
+    if (event.target === $("rallySpotlight")) closeRallySpotlight(true);
+  };
+  $("rallySpotlight").addEventListener("cancel", event => {
+    event.preventDefault();
+    closeRallySpotlight(true);
+  });
+  $("rallySpotlightJoin").onclick = event => {
+    event.stopPropagation();
+    const gameId = $("rallySpotlight").dataset.gameId;
+    if (!state.games.has(gameId)) return closeRallySpotlight(true);
+    selectRally(gameId);
+    window.open(JOIN_URL(gameId), "_blank", "noopener,noreferrer");
+    $("rallySpotlight").close();
+    window.focus();
+  };
 }
 
 function init() {
   window.TEAM = window.TEAM || {};
   initSiteShell();
+  document.addEventListener("pointerdown", primeRallyHorn, { once: true, capture: true });
+  document.addEventListener("keydown", primeRallyHorn, { once: true, capture: true });
   applyBranding();
 
   state.clientId = loadClientId();
