@@ -11,3 +11,8 @@ as specified by the upstream `LICENSE-ASSETS` file. Attribution: OpenFront.
 The directory layout was flattened from
 `resources/maps/<slug>/thumbnail.webp` to `assets/maps/<slug>.webp`; the image
 contents were not modified.
+
+The Cape Cod, Central America, Channel Islands, Gulf Of Mexico and Qing China
+thumbnails, plus the refreshed China thumbnail, were downloaded from the
+same upstream `resources/maps/<slug>/thumbnail.webp` paths at release
+`v0.34.0` on 2026-09-14, under the same upstream asset license.

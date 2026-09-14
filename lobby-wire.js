@@ -3,8 +3,8 @@
  * Since OpenFrontIO commit d70e4865ca (2026-08-21), lobby frames use the
  * project's positional Zbin format instead of JSON. This is a deliberately
  * small, dependency-free decoder for PublicLobbyMessageSchema only.
- * Schema synchronized with OpenFrontIO release v0.33.13, the version deployed
- * in production on 2026-09-04. Do not follow `main`: Zbin is positional and a
+ * Schema synchronized with OpenFrontIO release v0.34.0 (2026-09-14).
+ * Do not follow `main`: Zbin is positional and a
  * field that has not shipped yet shifts every value that follows it.
  */
 (function (root) {
@@ -191,13 +191,14 @@
     "Baikal Nuke Wars", "Baja California", "Balkans", "Balkhash", "Baltics",
     "Bering Sea", "Bering Strait", "Between Two Seas", "Black Sea",
     "Bosphorus Straits", "Branching Paths", "Britannia", "Britannia Classic",
-    "Caribbean", "Caspian Sea", "Caucasus", "China", "Chopping Block",
+    "Cape Cod", "Caribbean", "Caspian Sea", "Caucasus", "Central America",
+    "Channel Islands", "China", "Chopping Block",
     "Clearwater Lakes", "Conakry", "Crimea", "Danish Straits",
     "Deglaciated Antarctica", "Didier", "Didier France", "Dyslexdria",
     "East Asia", "Europe", "Europe Classic", "Falkland Islands",
     "Faroe Islands", "Finger Lakes", "Four Islands", "France",
     "Gateway to the Atlantic", "Germany", "Giant World Map", "Great Lakes",
-    "Gulf Of Guinea", "Gulf of St. Lawrence", "Halkidiki", "Hawaii",
+    "Gulf Of Guinea", "Gulf Of Mexico", "Gulf of St. Lawrence", "Halkidiki", "Hawaii",
     "Hecate Strait", "Hong Kong", "Iceland", "Indian Subcontinent",
     "Irish Sea", "Italia", "Japan", "Juan De Fuca Strait", "Korea",
     "Labyrinth", "Las Vegas Strip", "Lemnos", "Levant", "Lisbon",
@@ -205,14 +206,14 @@
     "Middle East", "MilkyWay", "Mississippi River", "Montreal",
     "More Than Luck", "New York City", "Nile Delta", "North America",
     "Northwest Passage", "Oceania", "Onion", "Pangaea", "Passage", "Pluto",
-    "Russia", "San Francisco", "Scandinavia", "Sierpinski", "Sol",
+    "Qing China", "Russia", "San Francisco", "Scandinavia", "Sierpinski", "Sol",
     "South America", "SoutheastAsia", "Strait of Gibraltar",
     "Strait of Hormuz", "Strait Of Malacca", "Surrounded", "Svalmel",
     "Taiwan Strait", "The Box", "Tierra Del Fuego", "Titan",
     "Tourney 2 Teams", "Tourney 3 Teams", "Tourney 4 Teams",
     "Tourney 8 Teams", "Traders Dream", "Two Lakes", "United States",
     "Venice", "Vietnam", "Warship Warship", "World", "World Inverted",
-    "Yellow Sea", "Yenisei",
+    "Yangtze River", "Yellow Sea", "Yenisei",
   ];
 
   const GAME_TYPES = ["Singleplayer", "Public", "Private"];
@@ -303,6 +304,7 @@
     bool("randomSpawn"),
     body("maxPlayers", uint, { optional: true }),
     body("allowedPublicIds", array(string), { optional: true }),
+    bool("trusted", { optional: true }),
     body("maxTimerValue", uint, { optional: true, nullable: true }),
     body("customAllianceDuration", uint, { optional: true, nullable: true }),
     body("startDelay", uint, { optional: true, nullable: true }),
@@ -332,6 +334,8 @@
     literal("type", "full"),
     body("serverTime", uint),
     body("games", games),
+    body("gitCommit", string, { optional: true }),
+    bool("active", { optional: true }),
   ]);
 
   const countsMessage = object([
