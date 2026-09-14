@@ -1853,3 +1853,203 @@ main {
   .slotLever.pulled .leverKnob,
   .slotMachine.win { animation-duration: .01ms; }
 }
+
+/* ================= GAL hub : navigation, profil et classement ================= */
+:root { --feed-height: clamp(150px, 21vh, 205px); }
+.appHeader {
+  position: relative;
+  z-index: 20;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 72px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--line-hi);
+  background: rgba(3, 9, 19, .94);
+  backdrop-filter: blur(18px);
+}
+.headerBrand { display: flex; flex-direction: column; flex: none; color: var(--ink); text-decoration: none; }
+.headerBrand > span { font-size: 30px; font-weight: 950; letter-spacing: 3px; line-height: 1; color: #74c9ff; text-shadow: 0 0 20px #3aa0ff66; }
+.headerBrand small { font-size: 8px; letter-spacing: 1.3px; margin-top: 5px; color: var(--ink-3); }
+.headerNav { display: flex; gap: 5px; flex: none; }
+.navTab { border: 1px solid transparent; border-radius: 9px; padding: 9px 14px; font: 750 13px/1.4 system-ui, sans-serif; color: var(--ink-2); background: transparent; cursor: pointer; white-space: nowrap; }
+.navTab:hover, .navTab:focus-visible { border-color: var(--line-hi); color: var(--ink); outline: none; }
+.navTab.active { background: linear-gradient(135deg, #113b62, #142944); color: #e7f5ff; border-color: #3aa0ff77; box-shadow: inset 0 -2px #3aa0ff; }
+.headerConnection { margin-left: auto; min-width: 0; }
+.headerConnection .loginBox { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; border: 0; padding: 0; background: transparent; backdrop-filter: none; }
+.headerConnection .railTitle, .headerConnection .pseudoForm label { display: none; }
+.headerConnection .pseudoForm { flex-direction: row; gap: 5px; min-width: 0; }
+.headerConnection .pseudoForm input { width: 170px; min-width: 0; }
+.headerConnection .discord { font-size: 11px; padding: 7px 9px; }
+.headerConnection .loginNote { position: absolute; right: 22px; top: 100%; max-width: min(450px, 90vw); padding: 8px; background: var(--card-solid); border: 1px solid var(--bad); border-radius: 6px; }
+.headerSession { display: flex; align-items: center; gap: 10px; }
+.headerIdentity { padding: 0; border: 0; display: flex; flex-direction: column; align-items: flex-start; max-width: 240px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.headerIdentity span { font-weight: 800; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.headerIdentity small { font-size: 10px; color: var(--ink-3); }
+.headerSession .profileOut { margin: 0; font-size: 11px; }
+.headerLive { flex: none; font-size: 10px; color: var(--ink-2); white-space: nowrap; }
+main { padding: 14px 18px 0; overflow: hidden; }
+.siteView { flex: 1; min-height: 0; min-width: 0; }
+.playView { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 23vw, 420px); grid-template-rows: minmax(0, 1fr); gap: 18px; }
+.playView .board { grid-column: 1; grid-row: 1; width: 100%; max-width: 1500px; margin: 0 auto; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; }
+.playView .rightRail { position: static; z-index: auto; width: 100%; min-width: 0; min-height: 0; display: flex; grid-column: 2; grid-row: 1; justify-content: stretch; }
+.playView .rallyDock { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; background: rgba(4, 9, 18, .87); }
+.playView .rallyDockHeader { font-size: 14px; letter-spacing: .6px; }
+.playView .rallyWaiting { display: flex; flex-direction: column; align-items: stretch; flex: none; max-height: none; min-height: 80px; gap: 9px; margin-top: 20px; padding: 0; overflow: visible; }
+.playView .rallyWaiting:empty::before { content: "Le camp est calme… 🏕️"; font-size: 13px; color: var(--ink-3); padding: 12px 0; }
+.playView .rallyWaiting .rallyPlayer { width: 100%; min-height: 42px; font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
+.rallyGroupPlayers .rallyPlayer { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.playView .rallyHint { display: block; font-size: 12px; margin: 16px 0; }
+.rallyGroups { border-top: 1px solid var(--line); padding-top: 12px; }
+.rallyGroups:empty { display: none; }
+.rallyGroups h3 { margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.rallyGroup { padding: 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: #071526b3; }
+.rallyGroupTitle { color: #8ad5ff; background: none; border: none; padding: 0; font: 750 14px/1.4 system-ui, sans-serif; cursor: pointer; text-align: left; }
+.rallyGroupTitle:hover { text-decoration: underline; }
+.rallyGroupPlayers { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.detailView { overflow-y: auto; padding: 4px max(0px, calc((100% - 1500px) / 2)) 30px; scrollbar-width: thin; }
+.pageHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 12px 0 24px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(120deg, #07192df5, #050d1aed); }
+.eyebrow { font-size: 10px; letter-spacing: 2px; font-weight: 800; color: #75caff; }
+.pageHeading h1 { margin: 7px 0; font-size: clamp(23px, 2.5vw, 34px); letter-spacing: -.8px; }
+.pageHeading p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.panel { padding: 22px; background: rgba(5, 13, 26, .94); border: 1px solid var(--line-hi); border-radius: 14px; }
+.panel h2 { margin: 0 0 14px; font-size: 18px; }
+.panel h3 { margin: 24px 0 12px; font-size: 15px; }
+.muted { color: var(--ink-3); font-size: 12px; line-height: 1.65; }
+.profileLayout { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr); gap: 22px; align-items: start; }
+.profileLayout .profile { padding: 26px; border-radius: 14px; background: rgba(5, 13, 26, .94); }
+.profileLayout .profileHero { margin: 22px 0; gap: 16px; }
+.profileLayout .profileHero strong { font-size: 24px; }
+.profileLayout .profileAvatar { width: 64px; height: 64px; }
+.profileLayout .statCell { padding: 14px; }
+.profileLayout .statCell strong { font-size: 20px; }
+.profileLayout .statsGrid { gap: 10px; }
+.historyFilters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 15px 20px; }
+.historyFilters label { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink-2); }
+.historyFilters input, #contributorSearch { padding: 8px 10px; border: 1px solid var(--line-hi); border-radius: 8px; background: #050d1a; color: var(--ink); font: inherit; color-scheme: dark; }
+.historyFilters small { margin-left: auto; font-size: 10px; color: var(--ink-3); }
+.historyStatus { margin: 15px 2px; color: var(--ink-2); font-size: 12px; }
+.rankingLayout { display: grid; grid-template-columns: minmax(290px, 350px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.rankingLayout .teamStats { background: rgba(5, 13, 26, .94); padding: 20px; border-radius: 14px; }
+.rankingLayout .rankHero { margin-top: 15px; }
+.rankingLayout .teamStatsHeader { font-size: 15px; }
+.rankingLayout .statCell { padding: 12px; }
+.rankingLayout .statCell strong { font-size: 17px; }
+.rankingLayout .dailyTop li { font-size: 13px; }
+.rankingLayout .dailyWorst > div { font-size: 13px; }
+.historyPanel { max-height: 620px; overflow-y: auto; scrollbar-width: thin; }
+.panelHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.panelHeading h2 { margin: 0; }
+.panelHeading p { margin: 6px 0 0; max-width: 740px; }
+.contributorsPanel { margin-top: 22px; }
+.periodSummary { margin-bottom: 18px; }
+.periodSummary .statCell { padding: 12px; }
+.periodSummary .statCell strong { font-size: 20px; }
+.officialTotals { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 15px; font-size: 12px; }
+.officialTotals summary { cursor: pointer; color: var(--ink-2); }
+.officialTotals .statsGrid { margin-top: 14px; }
+#contributorSearch { width: 230px; min-width: 0; }
+.tableScroll { width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.dataTable { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.dataTable th { padding: 10px 12px; color: var(--ink-3); font-size: 10px; text-transform: uppercase; letter-spacing: .8px; font-weight: 700; white-space: nowrap; background: #081426; }
+.dataTable td { padding: 12px; border-bottom: 1px solid #3aa0ff14; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dataTable tbody tr:hover { background: #3aa0ff0b; }
+.dayButton, .playerNameButton { border: 0; background: transparent; color: var(--ink); padding: 4px 0; font: 700 13px/1.5 system-ui, sans-serif; cursor: pointer; text-align: left; }
+.dayButton:hover, .dayButton.selected, .playerNameButton:hover { color: #7dd3fc; }
+.dayButton.selected { text-decoration: underline; text-underline-offset: 5px; }
+.historyScore { display: flex; align-items: center; gap: 12px; }
+.historyMiniBar { display: block; width: 70px; height: 5px; border-radius: 99px; background: linear-gradient(90deg, #3aa0ff, #22d3ee); transform: scaleX(var(--day-progress, 0)); transform-origin: left; }
+.historyMiniBar.loss { background: #f87171; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.playerDialog { width: min(720px, calc(100vw - 30px)); max-height: calc(100dvh - 40px); color: var(--ink); background: #081221; padding: 30px; border: 1px solid var(--line-hi); border-radius: 18px; box-shadow: 0 30px 100px #000b; overflow-y: auto; scrollbar-width: thin; }
+.playerDialog::backdrop { background: #0009; backdrop-filter: blur(5px); }
+.playerDialog > h2 { font-size: 26px; margin: 12px 36px 20px 0; overflow-wrap: anywhere; }
+.dialogClose { position: absolute; top: 15px; right: 15px; font-size: 24px; padding: 0; width: 32px; height: 32px; }
+.playerDialog .statsGrid { margin: 18px 0; }
+.playerDialog .statCell { padding: 14px; }
+.playerDialog .statCell strong { font-size: 20px; }
+.playerDialog h3 { margin-top: 24px; }
+.playView .empty { grid-column: 1; grid-row: 1; align-self: center; }
+@media (min-width: 1500px) { .appHeader { padding-left: 30px; padding-right: 30px; } main { padding-left: 30px; padding-right: 30px; } }
+@media (max-width: 1200px) {
+  .appHeader { flex-wrap: wrap; gap: 8px 16px; padding: 9px 14px; }
+  .headerBrand > span { font-size: 24px; }
+  .headerLive { font-size: 9px; }
+  .headerConnection .pseudoForm input { width: 150px; }
+  .playView { gap: 12px; grid-template-columns: minmax(0, 1fr) 270px; }
+  .playView .rallyDock { padding: 16px; }
+  .playView .rallyDockHeader { font-size: 12px; }
+}
+@media (max-width: 900px) {
+  .appHeader { min-height: 64px; }
+  .headerConnection { flex: 1 0 100%; margin: 0; }
+  .headerConnection:has(.loginBox[hidden]) { display: none; }
+  .headerConnection .loginBox { justify-content: space-between; }
+  .headerSession { margin-left: auto; }
+  .headerLive { margin-left: auto; }
+  .playView { grid-template-columns: minmax(0, 1fr) 220px; }
+  .playView .board { grid-template-columns: repeat(3, minmax(60vw, 1fr)); overflow-x: auto; scroll-snap-type: x mandatory; }
+  .playView .col { scroll-snap-align: start; }
+  .rankingLayout { grid-template-columns: 1fr; }
+  .rankingLayout .teamStats { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px 16px; }
+  .rankingLayout .teamStatsHeader { grid-column: 1 / -1; }
+  .rankingLayout .rankHero { margin: 0; }
+  .rankingLayout .statsGrid, .rankingLayout .dailyTop, .rankingLayout .dailyWorst { margin: 0; }
+  .historyPanel { max-height: none; }
+  .profileLayout { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  :root { --feed-height: 145px; }
+  main { padding: 9px 9px 0; }
+  .appHeader { gap: 8px; padding: 8px 10px; }
+  .headerBrand small { display: none; }
+  .headerNav { margin-left: auto; }
+  .navTab { padding: 7px 9px; font-size: 11px; }
+  .headerLive { order: 5; flex: 1 0 100%; text-align: right; }
+  .headerConnection .loginBox { gap: 6px; }
+  .headerConnection .discord { font-size: 0; padding: 8px; }
+  .headerConnection .discord svg { width: 22px; }
+  .headerConnection .pseudoForm { flex: 1; }
+  .headerConnection .pseudoForm input { flex: 1; width: 100px; }
+  .headerSession { flex: 1 0 100%; justify-content: space-between; }
+  .playView { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 105px; gap: 8px; }
+  .playView .board { grid-template-columns: repeat(3, minmax(83vw, 1fr)); }
+  .playView .rightRail { grid-column: 1; grid-row: 2; }
+  .playView .rallyDock { padding: 9px 12px; }
+  .playView .rallyDockHeader { font-size: 11px; }
+  .playView .rallyWaiting { flex-direction: row; flex-wrap: wrap; gap: 6px; min-height: 0; margin-top: 8px; }
+  .playView .rallyWaiting .rallyPlayer { width: auto; min-height: 30px; font-size: 12px; }
+  .playView .rallyWaiting:empty::before { padding: 0; font-size: 11px; }
+  .playView .rallyHint { margin: 7px 0; font-size: 10px; }
+  .rallyGroups { padding-top: 8px; }
+  .rallyGroup { padding: 8px; }
+  .wins { height: var(--feed-height); padding: 7px 9px; }
+  .winsHeader h2 { font-size: 10px; }
+  .winsHeader p { font-size: 9px; }
+  .pageHeading { margin: 10px 0 16px; align-items: flex-start; }
+  .pageHeading p { font-size: 11px; }
+  .pageHeading .btn { font-size: 0; padding: 8px; }
+  .pageHeading .btn::before { content: "🔄"; font-size: 15px; }
+  .panel { padding: 16px; }
+  .panelHeading { flex-wrap: wrap; }
+  #contributorSearch { width: 100%; }
+  .historyFilters { gap: 8px; padding: 12px; }
+  .historyFilters label { flex: 1; }
+  .historyFilters input { width: 135px; font-size: 12px; }
+  .historyFilters small { margin: 0; flex-basis: 100%; }
+  .rankingLayout .teamStats { display: block; padding: 16px; }
+  .rankingLayout .rankHero, .rankingLayout .statsGrid, .rankingLayout .dailyTop, .rankingLayout .dailyWorst { margin-top: 12px; }
+  .dataTable td, .dataTable th { padding: 10px 8px; }
+  .dataTable { font-size: 12px; }
+  .historyMiniBar { width: 35px; }
+  .profileLayout .profile { padding: 18px; }
+  .profileLayout .profileHero strong { font-size: 20px; }
+  .playerDialog { padding: 22px 16px; }
+}
+@media (max-height: 650px) and (min-width: 601px) {
+  :root { --feed-height: 125px; }
+  .appHeader { min-height: 56px; padding-top: 6px; padding-bottom: 6px; }
+  .headerBrand > span { font-size: 23px; }
+  .playView .rallyWaiting { min-height: 40px; }
+}

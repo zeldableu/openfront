@@ -5,12 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lobbies OpenFront</title>
 <meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
-<link rel="stylesheet" href="styles.css?v=20260914-2">
+<link rel="stylesheet" href="styles.css?v=20260914-3">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
 </head>
 <body>
 
+<header class="appHeader">
+  <a class="headerBrand" href="#jouer" aria-label="GAL accueil"><span>GAL</span><small>LES GAULOIS · OPENFRONT</small></a>
+  <nav class="headerNav" aria-label="Navigation principale">
+    <button class="navTab active" id="navPlay" type="button" aria-pressed="true">🎮 Jouer</button>
+    <button class="navTab" id="navProfile" type="button" aria-pressed="false">🎖️ Profil</button>
+    <button class="navTab" id="navRanking" type="button" aria-pressed="false">🏆 Classement</button>
+  </nav>
+  <div class="headerConnection" id="headerConnection"></div>
+  <div class="headerSession" id="headerSession" hidden>
+    <button class="headerIdentity" id="headerIdentity" type="button" title="Ouvrir mon profil"><span id="headerPseudo">—</span><small id="headerIdentityType">pseudo libre</small></button>
+  </div>
+  <span class="headerLive" id="headerLive" role="status">🟡 Connexion…</span>
+</header>
 <main>
+ <section class="siteView playView" id="playView" aria-label="Jouer">
   <aside class="leftRail" id="leftRail">
     <div class="loginBox" id="loginBox" hidden>
       <span class="railTitle">Connexion</span>
@@ -23,7 +37,7 @@
 
       <form class="pseudoForm" id="pseudoForm">
         <label for="pseudoInput">ou un simple pseudo</label>
-        <input type="text" id="pseudoInput" maxlength="24" autocomplete="nickname"
+        <input type="text" id="pseudoInput" maxlength="24" autocomplete="nickname" aria-label="Ton pseudo OpenFront"
                placeholder="ton pseudo OpenFront" spellcheck="false">
         <button class="btn" type="submit">Entrer</button>
       </form>
@@ -33,7 +47,7 @@
 
     <div class="profile" id="profileCard" hidden>
       <div class="teamStatsHeader">
-        <span>🎖️ Mon profil</span>
+        <span>🎖️ Profil joueur</span>
         <small id="profileTag">—</small>
       </div>
 
@@ -59,11 +73,12 @@
   <div class="rightRail">
     <aside class="rallyDock" id="rallyDock" aria-labelledby="rallyTitle">
       <div class="rallyDockHeader">
-        <span id="rallyTitle">Joueurs en attente</span>
+        <span id="rallyTitle">🛡️ Les Gaulois en attente</span>
         <strong id="rallyWaitingCount">0</strong>
       </div>
       <div class="rallyWaiting" id="rallyWaiting"></div>
       <p class="rallyHint" id="rallyHint">Entre ton pseudo pour apparaître ici.</p>
+      <div class="rallyGroups" id="rallyGroups"></div>
     </aside>
 
     <aside class="teamStats" id="teamStats" aria-labelledby="teamStatsTitle">
@@ -94,11 +109,11 @@
           <strong id="statsDailyPoints">—</strong>
         </div>
         <div class="statCell">
-          <span>✅ Victoires</span>
+          <span>✅ Victoires du jour</span>
           <strong id="statsWins">—</strong>
         </div>
         <div class="statCell">
-          <span>❌ Défaites</span>
+          <span>❌ Défaites du jour</span>
           <strong id="statsLosses">—</strong>
         </div>
       </div>
@@ -116,6 +131,7 @@
         <div id="statsWorst">—</div>
       </div>
       <p class="statsMessage" id="statsMessage" hidden></p>
+      <details class="officialTotals"><summary>📊 Tous les totaux officiels du clan</summary><div class="statsGrid" id="officialTeamTotals"></div></details>
     </aside>
   </div>
 
@@ -154,13 +170,34 @@
     <span>La liste se met à jour toute seule.</span>
   </div>
 
+ </section>
+ <section class="siteView detailView" id="profileView" aria-labelledby="profileViewTitle" hidden>
+   <div class="pageHeading"><div><span class="eyebrow">LE GUERRIER DERRIÈRE LE PSEUDO</span><h1 id="profileViewTitle">🎖️ Profil joueur</h1><p>Ton compte, tes statistiques et ta contribution aux Gaulois.</p></div></div>
+   <p class="panel guestProfile" id="guestProfile">Entre ton pseudo dans le header pour ouvrir ton profil.</p>
+   <div class="profileLayout"><div id="profileSlot"></div><section class="panel"><h2>🛡️ Ta place dans la team</h2><div id="profileTeamDetails"><p>Le bilan de ta contribution apparaîtra ici.</p></div></section></div>
+ </section>
+ <section class="siteView detailView" id="rankingView" aria-labelledby="rankingViewTitle" hidden>
+   <div class="pageHeading"><div><span class="eyebrow">LES GAULOIS AU SOMMET</span><h1 id="rankingViewTitle">🏆 Le classement GAL</h1><p>Le bilan de la team, l’historique quotidien et les contributions de chacun.</p></div><button class="btn" id="refreshHistory" type="button">🔄 Actualiser</button></div>
+   <form class="historyFilters panel" id="historyFilters">
+     <label>Du <input id="historyStart" type="date" required></label><label>Au <input id="historyEnd" type="date" required></label>
+     <button class="btn primary" type="submit">Afficher</button>
+     <button class="btn ghost" id="historyWeek" type="button">7 jours</button><button class="btn ghost" id="historyMonth" type="button">30 jours</button>
+     <small>Jusqu’à 31 jours par période · dates à Paris</small>
+   </form>
+   <p class="historyStatus" id="historyStatus" role="status" aria-live="polite">Ouvre le classement pour charger l’historique.</p>
+   <div class="rankingLayout"><div id="rankingOverview"></div><section class="panel historyPanel"><div class="panelHeading"><h2>📅 Chaque jour compte</h2><button class="btn ghost" id="historyAllDays" type="button">Toute la période</button></div><div class="periodSummary statsGrid" id="periodSummary"></div><div id="dailyHistory"></div></section></div>
+   <section class="panel contributorsPanel"><div class="panelHeading"><div><h2 id="contributorsTitle">⚔️ Contributions sur la période</h2><p class="muted">Score par partie partagé à parts égales entre les joueurs GAL présents : estimation, pas un classement individuel officiel.</p></div><input id="contributorSearch" type="search" placeholder="🔎 Chercher un Gaulois" aria-label="Chercher un joueur"></div><div id="contributorTable"></div></section>
+ </section>
 </main>
+
+<dialog class="playerDialog" id="playerDialog" aria-labelledby="playerDetailName"><button class="dialogClose btn ghost" id="closePlayerDialog" type="button" aria-label="Fermer le détail du joueur">×</button><span class="eyebrow">UN GAULOIS, UN BILAN</span><h2 id="playerDetailName">Joueur</h2><div id="playerDetailContent"></div></dialog>
 
 <div class="dispersionAlert" id="dispersionAlert" role="status" aria-live="polite" hidden>
   <span aria-hidden="true">🔀</span> Les Gaulois sont dispersés !
 </div>
 
 <button class="pigLauncher" id="pigLauncher" type="button"
+        hidden
         aria-label="Ouvrir la machine à sous GAL" title="Tente le jackpot GAL 🐷">
   <img src="flying-pig.png?v=20260817-1" alt="" draggable="false">
 </button>
@@ -222,6 +259,7 @@
 <script src="team.config.js?v=20260908-1"></script>
 <script src="lobby-wire.js?v=20260914-1"></script>
 <script src="lobby-layout.js?v=20260914-2"></script>
-<script src="app.js?v=20260914-2"></script>
+<script src="team-history.js?v=20260914-3"></script>
+<script src="app.js?v=20260914-3"></script>
 </body>
 </html>

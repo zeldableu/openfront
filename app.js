@@ -90,6 +90,11 @@ const state = {
   domStale: false,
   cardEls: new Map(),
   mapPages: { ffa: 0, team: 0, special: 0 },
+  view: "play",
+  history: null,
+  historySelectedDay: "",
+  historyGeneration: 0,
+  historyLoading: false,
 };
 
 const $ = id => document.getElementById(id);
@@ -229,6 +234,7 @@ function normalize(raw) {
    ne puisse pas passer pour à jour. */
 function setStatus(kind) {
   state.status = kind;
+  renderHeader();
   if (kind === "off" && !state.wasOffline) {
     state.wasOffline = true;
     toast("Connexion perdue — reconnexion…", "bad");
@@ -434,6 +440,7 @@ function animateCardReflow(positions) {
 function render() {
   // Onglet caché : on saute la mise à jour du DOM, on la rejouera au retour.
   if (document.hidden) { state.domStale = true; return; }
+  if (state.view !== "play") { state.domStale = true; return; }
   state.domStale = false;
 
   const list = orderedGames();
@@ -1138,6 +1145,25 @@ function renderRallyDock() {
     hint = "Tout le monde a choisi une map.";
   }
   $("rallyHint").textContent = hint;
+  const groups = $("rallyGroups");
+  const selected = members.filter(member => member.gameId);
+  const groupSig = selected.map(member => `${member.id}:${member.pseudo}:${member.avatar || ""}:${member.gameId}:${state.games.get(member.gameId)?.map || ""}`).join("|");
+  if (groups.dataset.sig !== groupSig) {
+    groups.dataset.sig = groupSig;
+    groups.replaceChildren();
+    if (selected.length) groups.append(el("h3", null, "🗺️ Déjà sur une map"));
+    for (const gameId of new Set(selected.map(member => member.gameId))) {
+      const group = el("section", "rallyGroup");
+      const button = el("button", "rallyGroupTitle", state.games.get(gameId)?.map || "Partie sélectionnée");
+      button.type = "button";
+      button.title = "Voir cette map dans le tableau";
+      button.onclick = () => focusGame(gameId);
+      const names = el("div", "rallyGroupPlayers");
+      for (const member of selected.filter(member => member.gameId === gameId)) names.append(playerMarker(member));
+      group.append(button, names);
+      groups.append(group);
+    }
+  }
 }
 
 function renderPresence() {
@@ -1145,13 +1171,14 @@ function renderPresence() {
   renderProfile();
   renderRallyDock();
   renderDispersionAlert();
+  renderHeader();
 }
 
 function renderDispersionAlert() {
   const mapIds = new Set(visibleMembers().map(member => member.gameId).filter(Boolean));
   const dispersed = mapIds.size >= 3;
   const alert = $("dispersionAlert");
-  alert.hidden = !dispersed;
+  alert.hidden = !dispersed || state.view !== "play";
   if (dispersed && !state.wasDispersed) {
     toast("🔀 Les Gaulois sont dispersés !", "bad");
   }
@@ -1244,14 +1271,7 @@ function setOfAccount(account, persist = true) {
    documenté nulle part (`hbomb: ["17","24","0"]`). On ne garde donc que
    `wins` et `losses`, dont la signification ne prête pas à confusion. */
 function sumWinsLosses(node, acc = { wins: 0, losses: 0 }) {
-  if (!node || typeof node !== "object") return acc;
-  if ("wins" in node || "losses" in node) {
-    acc.wins += Number(node.wins) || 0;
-    acc.losses += Number(node.losses) || 0;
-    return acc;
-  }
-  for (const child of Object.values(node)) sumWinsLosses(child, acc);
-  return acc;
+  return window.OpenFrontTeamHistory.careerTotals(node, acc);
 }
 
 /* L'arbre est rangé en `visibilité > mode > difficulté`. Le deuxième
@@ -1259,19 +1279,7 @@ function sumWinsLosses(node, acc = { wins: 0, losses: 0 }) {
    à 45 joueurs, où gagner est rare par construction, et les parties en
    équipe. Comparés entre eux, ces chiffres ne veulent rien dire. */
 function careerByMode(tree) {
-  const modes = new Map();
-  if (!tree || typeof tree !== "object") return modes;
-  for (const visibility of Object.values(tree)) {
-    if (!visibility || typeof visibility !== "object") continue;
-    for (const [mode, node] of Object.entries(visibility)) {
-      const sum = sumWinsLosses(node);
-      const row = modes.get(mode) || { mode, wins: 0, losses: 0 };
-      row.wins += sum.wins;
-      row.losses += sum.losses;
-      modes.set(mode, row);
-    }
-  }
-  return modes;
+  return window.OpenFrontTeamHistory.careerModeRows(tree);
 }
 
 /* Le « meilleur mode » n'a de sens qu'avec assez de parties : sur trois
@@ -1475,6 +1483,8 @@ function renderProfileStats() {
 function renderProfile() {
   const card = $("profileCard");
   card.hidden = !state.pseudo;
+  $("guestProfile").hidden = Boolean(state.pseudo);
+  document.querySelector(".profileLayout").hidden = !state.pseudo;
   if (!state.pseudo) return;
 
   const avatar = $("profileAvatar");
@@ -1497,6 +1507,7 @@ function renderProfile() {
 
   renderProfileLink();
   renderProfileStats();
+  renderProfileTeamDetails();
 }
 
 /* ---------------- Admin : renouvellement du refresh token ----------------
@@ -1788,12 +1799,13 @@ async function calculateTeamStats() {
     ? sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0)
     : null;
   const wins = sessions ? sessions.filter(session => session.hasWon).length : null;
-  const teamPoints = leaderboard
+  const teamPoints = leaderboard && clanIndex >= 0
     ? (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0)
     : null;
 
   return {
     rank: clanIndex >= 0 ? clanIndex + 1 : 0,
+    clan: clanIndex >= 0 ? clan : null,
     ratio: leaderboard ? Number(clan.weightedWLRatio) : NaN,
     teamPoints,
     points,
@@ -1821,6 +1833,14 @@ function signedScore(value) {
 }
 
 function renderTeamStats(stats) {
+  const totals = $("officialTeamTotals");
+  totals.replaceChildren();
+  if (stats.clan) {
+    for (const [key, label] of [["games", "🎮 Parties"], ["wins", "🏆 Victoires"], ["losses", "💀 Défaites"], ["playerSessions", "🛡️ Participations"], ["weightedWins", "⭐ Points gagnés"], ["weightedLosses", "🧊 Points perdus"]]) {
+      const value = stats.clan[key] == null ? NaN : Number(stats.clan[key]);
+      totals.append(statCell(label, Number.isFinite(value) ? value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—"));
+    }
+  } else totals.append(el("p", "muted", "Totaux officiels indisponibles."));
   $("statsRank").textContent = stats.rank ? `#${stats.rank}` : "—";
   $("statsRankLabel").textContent = stats.rank
     ? `🏆 GAL est ${stats.rank}${stats.rank === 1 ? "er" : "e"} mondial !`
@@ -2246,8 +2266,345 @@ function applyBranding() {
 
 /* ---------------- Démarrage ---------------- */
 
+function renderHeader() {
+  $("headerSession").hidden = !state.pseudo;
+  $("headerPseudo").textContent = state.pseudo || "Invité";
+  $("headerIdentityType").textContent = state.identity ? "✔ Discord vérifié" : "pseudo libre";
+  const status = state.status === "live" ? "🟢 Maps en direct" : state.status === "off" ? "🔴 Reconnexion…" : "🟡 Connexion…";
+  $("headerLive").textContent = `${status} · ${state.presenceError ? "présence indisponible" : `${visibleMembers().length} en ligne`}`;
+}
+
+function showView(view) {
+  state.view = view;
+  for (const [name, id] of [["play", "Play"], ["profile", "Profile"], ["ranking", "Ranking"]]) {
+    $(name + "View").hidden = name !== view;
+    $("nav" + id).classList.toggle("active", name === view);
+    $("nav" + id).setAttribute("aria-pressed", String(name === view));
+  }
+  $("wins").hidden = view !== "play";
+  $("dispersionAlert").hidden = view !== "play" || !state.wasDispersed;
+  if (view === "play") scheduleRender();
+  else if ((view === "ranking" || state.pseudo) && !state.history && !state.historyLoading) loadHistory();
+}
+
+function focusGame(gameId) {
+  const game = state.games.get(gameId);
+  if (!game) { toast("Cette map n’est plus dans les lobbies."); return; }
+  showView("play");
+  const col = COLUMNS.find(column => column.cat === game.cat) || COLUMNS[2];
+  const host = $(col.cards);
+  const games = orderedGames().filter(entry => entry.cat === game.cat);
+  state.mapPages[col.cat] = Math.floor(games.findIndex(entry => entry.id === gameId) / window.OpenFrontLobbyLayout.rowsForHeight(host.clientHeight));
+  render();
+  const board = $("board");
+  board.scrollTo({ left: host.parentElement.offsetLeft - board.offsetLeft, behavior: "smooth" });
+  state.cardEls.get(gameId)?.focus({ preventScroll: true });
+}
+
+const historyCache = new Map();
+const playerCareerCache = new Map();
+const prettyDay = day => new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${day}T12:00:00Z`));
+const shiftDay = (day, count) => {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+};
+
+function setHistoryPeriod(days) {
+  const today = window.OpenFrontTeamHistory.dayKey(new Date());
+  $("historyEnd").value = today;
+  $("historyStart").value = shiftDay(today, 1 - days);
+}
+
+async function fetchHistorySessions(base, start, end, generation) {
+  // The official API rejects intervals longer than 24 hours. Split in UTC
+  // windows, including the 25-hour Paris day at the autumn DST transition.
+  const windows = window.OpenFrontTeamHistory.scoreWindows(start, end);
+  const sessions = [];
+  let truncated = false;
+  const fetchWindow = async interval => {
+    const query = page => new URLSearchParams({ start: apiIsoSeconds(new Date(interval.start)), end: apiIsoSeconds(new Date(interval.end)), page: String(page), limit: "50" });
+    const first = await fetchStatsJson(`${base}/sessions?${query(1)}`);
+    const results = Array.isArray(first.results) ? [...first.results] : [];
+    const required = Math.max(1, Math.ceil((Number(first.total) || results.length) / 50));
+    const pages = Math.min(20, required);
+    for (let page = 2; page <= pages; page++) {
+      if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
+      const data = await fetchStatsJson(`${base}/sessions?${query(page)}`);
+      if (Array.isArray(data.results)) results.push(...data.results);
+    }
+    return { results, truncated: required > pages };
+  };
+  for (let i = 0; i < windows.length; i += 3) {
+    if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
+    const batch = await Promise.all(windows.slice(i, i + 3).map(fetchWindow));
+    for (const data of batch) { sessions.push(...data.results); truncated ||= data.truncated; }
+  }
+  return { sessions, truncated };
+}
+
+async function fetchHistoryGames(base, start, end, generation) {
+  const games = [];
+  let cursor = "";
+  for (let page = 0; page < 100; page++) {
+    if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
+    const data = await fetchStatsJson(`${base}/games${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+    const batch = Array.isArray(data.results) ? data.results : [];
+    let reachedStart = false;
+    for (const game of batch) {
+      const time = new Date(game.start).getTime();
+      if (time >= start.getTime() && time < end.getTime()) games.push(game);
+      if (time < start.getTime()) reachedStart = true;
+    }
+    cursor = typeof data.nextCursor === "string" ? data.nextCursor : "";
+    if (!batch.length || !cursor || reachedStart) return { games, truncated: false };
+    if (page % 10 === 9 && generation === state.historyGeneration) $("historyStatus").textContent = `⏳ Lecture de l’historique GAL… ${page + 1} pages parcourues.`;
+  }
+  return { games, truncated: Boolean(cursor) };
+}
+
+async function loadHistory(force = false) {
+  const startKey = $("historyStart").value;
+  const endKey = $("historyEnd").value;
+  const days = (Date.parse(endKey) - Date.parse(startKey)) / 86400000 + 1;
+  const status = $("historyStatus");
+  if (!Number.isFinite(days) || days < 1 || days > 31 || endKey > window.OpenFrontTeamHistory.dayKey(new Date())) {
+    status.textContent = "Choisis une période passée ou actuelle de 1 à 31 jours.";
+    return;
+  }
+  const generation = ++state.historyGeneration;
+  const key = `${startKey}/${endKey}`;
+  state.historyLoading = true;
+  state.historySelectedDay = "";
+  state.history = null;
+  $("rankingView").setAttribute("aria-busy", "true");
+  status.textContent = "⏳ Chargement des scores officiels et des joueurs de la période…";
+  $("dailyHistory").replaceChildren(el("p", "muted", "L’historique se prépare…"));
+  $("periodSummary").replaceChildren();
+  renderContributors();
+  try {
+    const cached = historyCache.get(key);
+    let result;
+    if (!force && cached && Date.now() - cached.at < STATS_REFRESH_MS) result = cached.value;
+    else {
+      const base = apiBase();
+      if (!base) throw new Error("Service de statistiques non configuré.");
+      const start = parisDayStart(new Date(`${startKey}T12:00:00Z`));
+      const end = parisDayStart(new Date(`${shiftDay(endKey, 1)}T12:00:00Z`));
+      const archivePromise = fetchHistoryGames(base, start, end, generation)
+        .then(value => ({ status: "fulfilled", value }), () => ({ status: "rejected" }));
+      let scores;
+      try { scores = { value: await fetchHistorySessions(base, start, end, generation) }; }
+      catch { throw new Error("Les scores officiels sont indisponibles. Réessaie dans un instant."); }
+      if (generation !== state.historyGeneration) return;
+      const interim = window.OpenFrontTeamHistory.summarize(scores.value.sessions, [], startKey, endKey);
+      state.history = { ...interim, start: startKey, end: endKey, archiveLoading: true, sessionsTruncated: scores.value.truncated };
+      renderDailyHistory();
+      renderContributors();
+      status.textContent = `⏳ ${interim.games} scores officiels chargés. Lecture des participants pour reconstituer les contributions…`;
+      const archive = await archivePromise;
+      if (generation !== state.historyGeneration) return;
+      result = {
+        ...window.OpenFrontTeamHistory.summarize(scores.value.sessions, archive.status === "fulfilled" ? archive.value.games : [], startKey, endKey),
+        start: startKey, end: endKey,
+        sessionsTruncated: scores.value.truncated,
+        archiveMissing: archive.status !== "fulfilled",
+        archiveTruncated: archive.status === "fulfilled" && archive.value.truncated,
+      };
+      const coveredDays = scores.value.sessions.map(session => window.OpenFrontTeamHistory.dayKey(session.gameStart)).filter(Boolean).sort();
+      const oldestDay = coveredDays[0] || "";
+      for (const day of result.days) day.partial = result.sessionsTruncated && (!oldestDay || day.day <= oldestDay);
+      historyCache.set(key, { at: Date.now(), value: result });
+      if (historyCache.size > 6) historyCache.delete(historyCache.keys().next().value);
+    }
+    if (generation !== state.historyGeneration) return;
+    state.history = result;
+    const warnings = [];
+    if (result.sessionsTruncated) warnings.push("limite de pages atteinte : scores partiels");
+    if (result.archiveMissing) warnings.push("historique joueurs indisponible");
+    if (result.archiveTruncated) warnings.push("limite de pages atteinte : historique joueurs partiel");
+    if (result.matched < result.games) warnings.push(`contributions reconstituées pour ${result.matched}/${result.games} parties`);
+    status.textContent = `${warnings.length ? "⚠️" : "✅"} ${prettyDay(startKey)} → ${prettyDay(endKey)} · ${result.games} parties classées · ${result.players.length} joueurs identifiés${warnings.length ? ` · ${warnings.join(" · ")}` : ""}.`;
+    renderDailyHistory();
+    renderContributors();
+    renderProfileTeamDetails();
+  } catch (error) {
+    if (generation !== state.historyGeneration) return;
+    status.textContent = `⚠️ ${error.message}`;
+    $("dailyHistory").replaceChildren(el("p", "muted", "Historique indisponible. Le bilan global reste accessible."));
+  } finally {
+    if (generation === state.historyGeneration) {
+      state.historyLoading = false;
+      $("rankingView").setAttribute("aria-busy", "false");
+    }
+  }
+}
+
+function dataTable(headers, rows, caption) {
+  const wrap = el("div", "tableScroll");
+  const table = el("table", "dataTable");
+  if (caption) table.append(el("caption", "srOnly", caption));
+  const head = el("thead");
+  const hr = el("tr");
+  for (const text of headers) {
+    const th = el("th", null, text);
+    th.scope = "col";
+    hr.append(th);
+  }
+  head.append(hr);
+  const body = el("tbody");
+  for (const cells of rows) {
+    const tr = el("tr");
+    for (const value of cells) {
+      const td = el("td");
+      if (value instanceof Node) td.append(value); else td.textContent = String(value);
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.append(head, body);
+  wrap.append(table);
+  return wrap;
+}
+
+function pointLabel(value) { return el("strong", value < 0 ? "negative" : value > 0 ? "positive" : "", signedScore(value)); }
+
+function renderDailyHistory() {
+  const history = state.history;
+  if (!history) return;
+  const summary = $("periodSummary");
+  const points = history.days.reduce((sum, day) => sum + day.points, 0);
+  const wins = history.days.reduce((sum, day) => sum + day.wins, 0);
+  summary.replaceChildren(statCell(history.sessionsTruncated ? "⭐ Points GAL (partiels)" : "⭐ Points GAL de la période", signedScore(points)), statCell("🎮 Parties classées", history.games), statCell("🏆 Victoires / défaites", `${wins} / ${history.games - wins}`), statCell("🛡️ Joueurs identifiés", history.archiveLoading ? "⏳" : history.players.length));
+  const scale = Math.max(1, ...history.days.map(day => Math.abs(day.points)));
+  const rows = history.days.map(day => {
+    const button = el("button", `dayButton${state.historySelectedDay === day.day ? " selected" : ""}`, prettyDay(day.day));
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(state.historySelectedDay === day.day));
+    button.onclick = () => { state.historySelectedDay = day.day; renderDailyHistory(); renderContributors(); };
+    const score = el("div", "historyScore");
+    score.append(pointLabel(day.points));
+    const bar = el("span", `historyMiniBar${day.points < 0 ? " loss" : ""}`);
+    bar.style.setProperty("--day-progress", String(Math.abs(day.points) / scale));
+    score.append(bar);
+    if (day.partial || history.sessionsTruncated && history.archiveLoading) {
+      if (!day.games) score.replaceChildren(el("strong", null, "—"));
+      score.prepend(el("span", "muted", "⚠️ Partiel"));
+    }
+    return [button, score, day.partial && !day.games ? "—" : day.games, day.partial && !day.games ? "—" : `${day.wins} / ${day.losses}`, history.archiveLoading ? "⏳" : `${day.players.length}${day.matched < day.games ? " ⚠️" : ""}`];
+  });
+  $("dailyHistory").replaceChildren(dataTable(["Jour", "Points GAL", "Parties", "V / D", "Joueurs"], rows, "Historique quotidien officiel de la team GAL"));
+}
+
+function historyPlayers() {
+  return state.historySelectedDay ? state.history.days.find(day => day.day === state.historySelectedDay)?.players || [] : state.history.players;
+}
+
+function renderContributors() {
+  const host = $("contributorTable");
+  const history = state.history;
+  if (!history) { host.replaceChildren(el("p", "muted", "Les contributions apparaîtront après le chargement de la période.")); return; }
+  $("contributorsTitle").textContent = state.historySelectedDay ? `⚔️ Contributions du ${prettyDay(state.historySelectedDay)}` : `⚔️ Contributions cumulées · ${prettyDay(history.start)} → ${prettyDay(history.end)}`;
+  if (history.archiveLoading) { host.replaceChildren(el("p", "muted", "⏳ Les scores sont disponibles. Les contributions arrivent après la lecture des participants…")); return; }
+  const search = $("contributorSearch").value.trim().toLocaleLowerCase("fr");
+  const players = historyPlayers();
+  const day = history.days.find(day => day.day === state.historySelectedDay);
+  const totalGames = day ? day.games : history.games;
+  const rows = players.map((player, index) => ({ player, rank: index + 1 })).filter(({ player }) => player.name.toLocaleLowerCase("fr").includes(search)).map(({ player, rank }) => {
+    const button = el("button", "playerNameButton", player.name);
+    button.type = "button";
+    button.onclick = () => openPlayerDetails(player.id);
+    return [rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : rank, button, pointLabel(player.points), player.games, player.wins, player.losses,
+      `${Math.round(player.wins / player.games * 100)} %`, signedScore(player.points / player.games), totalGames ? `${Math.round(player.games / totalGames * 100)} %` : "—"];
+  });
+  host.replaceChildren(rows.length ? dataTable(["#", "Gaulois", "Points estimés", "Parties", "V", "D", "Winrate", "Pts / partie", "Présence team"], rows, "Contributions estimées des joueurs GAL") : el("p", "muted", history.archiveMissing ? "La source qui identifie les joueurs est indisponible." : "Aucun joueur identifié pour ce filtre. Les contributions nécessitent un score officiel et les participants de la partie."));
+}
+
+function playerTeamContent(player) {
+  const content = el("div");
+  const metrics = el("div", "statsGrid");
+  metrics.append(statCell("⭐ Contribution estimée", signedScore(player.points)), statCell("🎯 Parties avec GAL", player.games), statCell("🏆 Victoires", player.wins), statCell("💀 Défaites", player.losses), statCell("⚖️ Winrate avec GAL", `${Math.round(player.wins / player.games * 100)} %`), statCell("🚀 Points / partie", signedScore(player.points / player.games)));
+  const rank = state.history.players.findIndex(row => row.id === player.id) + 1;
+  metrics.append(statCell("🏅 Rang sur la période", `${rank} / ${state.history.players.length}`), statCell("🛡️ Présence dans les parties GAL", state.history.games ? `${Math.round(player.games / state.history.games * 100)} %` : "—"));
+  if (player.daily?.length) {
+    const byScore = [...player.daily].sort((a, b) => b.points - a.points);
+    metrics.append(statCell("🔥 Meilleur jour joué", `${prettyDay(byScore[0].day)} · ${signedScore(byScore[0].points)}`, "wide"), statCell("🧊 Pire jour joué", `${prettyDay(byScore.at(-1).day)} · ${signedScore(byScore.at(-1).points)}`, "wide"));
+  }
+  content.append(el("p", "muted", `Période : ${prettyDay(state.history.start)} → ${prettyDay(state.history.end)}. Statistiques sur les parties classées identifiées, pas sur toute la carrière.`), metrics);
+  const days = [...(player.daily || [])].reverse();
+  if (days.length) content.append(el("h3", null, "📅 Contribution jour par jour"), dataTable(["Jour", "Points estimés", "Parties", "V / D"], days.map(day => [prettyDay(day.day), pointLabel(day.points), day.games, `${day.wins} / ${day.losses}`]), "Contributions quotidiennes du joueur"));
+  content.append(el("p", "muted", "Les points individuels sont une répartition estimée du score GAL. Les parties sans participants identifiables ne sont pas attribuées."));
+  return content;
+}
+
+async function openPlayerDetails(id) {
+  const player = state.history?.players.find(row => row.id === id);
+  if (!player) return;
+  const dialog = $("playerDialog");
+  dialog.dataset.player = id;
+  $("playerDetailName").textContent = `⚔️ ${player.name}`;
+  const career = el("section", "careerDetails");
+  career.append(el("h3", null, "🎖️ Carrière OpenFront"), el("p", "muted", "Chargement des statistiques publiques…"));
+  $("playerDetailContent").replaceChildren(playerTeamContent(player), career);
+  if (!dialog.open) dialog.showModal();
+  try {
+    const cached = playerCareerCache.get(id);
+    const profile = cached && Date.now() - cached.at < STATS_REFRESH_MS ? cached.value : await fetchStatsJson(`${apiBase()}/player/${encodeURIComponent(id)}`);
+    playerCareerCache.set(id, { at: Date.now(), value: profile });
+    if (!dialog.open || dialog.dataset.player !== id) return;
+    if (!profile || !profile.stats) throw new Error("Statistiques absentes");
+    const stats = sumWinsLosses(profile.stats);
+    const grid = el("div", "statsGrid");
+    grid.append(statCell("🏆 Victoires carrière", stats.wins), statCell("💀 Défaites carrière", stats.losses), statCell("🎮 Parties carrière", stats.wins + stats.losses), statCell("⚖️ Winrate carrière", stats.wins + stats.losses ? `${Math.round(stats.wins / (stats.wins + stats.losses) * 100)} %` : "—"));
+    career.replaceChildren(el("h3", null, "🎖️ Carrière OpenFront · tous modes"), grid);
+    const modes = [...careerByMode(profile.stats).values()].filter(row => row.wins + row.losses > 0);
+    if (modes.length) career.append(dataTable(["Mode", "V", "D", "Winrate"], modes.map(row => [row.mode, row.wins, row.losses, `${Math.round(row.wins / (row.wins + row.losses) * 100)} %`]), "Carrière publique par mode de jeu"));
+  } catch {
+    if (dialog.open && dialog.dataset.player === id) career.replaceChildren(el("p", "muted", "Carrière OpenFront indisponible. Les contributions GAL restent visibles."));
+  }
+}
+
+function renderProfileTeamDetails() {
+  const host = $("profileTeamDetails");
+  if (!state.pseudo) { host.replaceChildren(el("p", "muted", "Connecte-toi avec ton pseudo pour retrouver tes contributions.")); return; }
+  if (!state.ofAccount) { host.replaceChildren(el("p", "muted", "Choisis ton compte OpenFront dans le profil pour retrouver tes contributions dans la team.")); return; }
+  const history = state.history;
+  if (!history) { host.replaceChildren(el("p", "muted", "Charge une période dans Classement pour consulter tes contributions.")); return; }
+  if (history.archiveLoading) { host.replaceChildren(el("p", "muted", "⏳ Recherche des contributions dans l’historique GAL…")); return; }
+  const player = history.players.find(row => row.id === state.ofAccount.publicId);
+  host.replaceChildren(player ? playerTeamContent(player) : el("p", "muted", `Aucune contribution identifiée du ${prettyDay(history.start)} au ${prettyDay(history.end)}${history.matched < history.games ? " : l’historique joueurs est partiel" : ""}.`));
+}
+
+function initSiteShell() {
+  $("headerConnection").append($("loginBox"));
+  $("headerSession").append($("logoutBtn"));
+  $("profileSlot").append($("profileCard"));
+  $("rankingOverview").append($("teamStats"));
+  $("leftRail").remove();
+  $("navPlay").onclick = () => showView("play");
+  $("navProfile").onclick = $("headerIdentity").onclick = () => showView("profile");
+  $("navRanking").onclick = () => showView("ranking");
+  document.querySelector(".headerBrand").onclick = event => { event.preventDefault(); showView("play"); };
+  const today = window.OpenFrontTeamHistory.dayKey(new Date());
+  $("historyStart").max = $("historyEnd").max = today;
+  setHistoryPeriod(7);
+  $("historyFilters").onsubmit = event => { event.preventDefault(); loadHistory(); };
+  $("refreshHistory").onclick = () => { loadTeamStats(); loadHistory(true); };
+  $("historyWeek").onclick = () => { setHistoryPeriod(7); loadHistory(); };
+  $("historyMonth").onclick = () => { setHistoryPeriod(30); loadHistory(); };
+  $("historyAllDays").onclick = () => { state.historySelectedDay = ""; renderDailyHistory(); renderContributors(); };
+  $("contributorSearch").oninput = renderContributors;
+  $("closePlayerDialog").onclick = () => $("playerDialog").close();
+  $("playerDialog").onclick = event => {
+    const dialog = $("playerDialog");
+    const rect = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
+  };
+}
+
 function init() {
   window.TEAM = window.TEAM || {};
+  initSiteShell();
   applyBranding();
 
   state.clientId = loadClientId();
@@ -2291,7 +2648,6 @@ function init() {
     layoutObserver.observe($("board"));
   }
   window.addEventListener("resize", scheduleRender);
-  initSlotMachine();
   loadTeamStats();
   setInterval(loadTeamStats, STATS_REFRESH_MS);
 

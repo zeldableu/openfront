@@ -17,11 +17,12 @@ La grille centrale affiche une à trois cellules fixes par catégorie selon la
 hauteur disponible. Les flèches sous chaque colonne donnent accès à tous les
 lobbies, même quand OpenFront en propose davantage : les cartes ne sont jamais
 écrasées et la dernière page conserve la même taille de cellules.
-Ni header, ni menu, ni réglage : on ouvre, on voit les parties sur le fond GAL,
-on rejoint.
+Le header rassemble la connexion, le pseudo et trois rubriques : **Jouer**,
+**Profil** et **Classement**. Le panneau d’attente occupe toute la hauteur à
+droite des maps ; il regroupe aussi les joueurs ayant déjà choisi une partie.
 
-La connexion au serveur ne s'affiche donc plus en permanence. En cas de coupure,
-un bandeau discret apparaît en bas à droite (« Connexion perdue », puis
+La connexion aux lobbies et le nombre de présents s’affichent dans le header.
+En cas de coupure, un bandeau discret apparaît (« Connexion perdue », puis
 « Reconnecté ») : une liste figée ne peut pas passer pour à jour.
 
 Site **100 % statique** : pas de base de données. Les lobbies viennent du
@@ -52,6 +53,8 @@ décrite dans [`worker/README.md`](worker/README.md).
 | `index.html` | Structure de la page |
 | `styles.css` | Thème |
 | `app.js` | Logique, générique et indépendante de la team |
+| `lobby-layout.js` | Pagination des maps à hauteur de cellule stable |
+| `team-history.js` | Agrégation quotidienne des scores et des contributions |
 | `assets/wallpaper.png` | Le fond d'écran GAL |
 
 ## Mise en page
@@ -64,9 +67,29 @@ Une carte, c'est la miniature de la map avec trois pastilles posées dessus
 puis une ligne d'infos : nom de la map, et en dessous `mode · difficulté · bots`.
 Toute la carte est cliquable et ouvre le lobby sur OpenFront.
 
-Le bouton **Rally** apparaît au survol : il copie un lien `?rally=<id>` — qui
-l'ouvre voit ce lobby épinglé en haut de sa colonne avec un bandeau *Rejoindre*.
-C'est le « on rejoint tous celui-là », à coller dans le Discord.
+Le bouton **Rallier** déclenche un appel partagé. Les halos et les pseudos sur
+les maps indiquent les rassemblements ; aucun compteur « GAL prêts » ne couvre
+les miniatures. La machine cochon est temporairement désactivée, sans supprimer
+ses assets.
+
+## Profil et classement
+
+Le profil lie un pseudo au compte OpenFront choisi et affiche les statistiques
+publiques ainsi que les contributions dans la période chargée. Le classement
+présente le bilan mondial du clan, les totaux officiels, un historique quotidien
+et le classement des joueurs identifiés. Cliquer un jour filtre les joueurs ;
+cliquer un joueur ouvre sa fiche détaillée et sa carrière par mode.
+
+Toute période de 1 à 31 jours peut être sélectionnée, y compris dans le passé.
+Les dates sont regroupées en Europe/Paris. L’API de scores refuse les intervalles
+supérieurs à 24 heures : les requêtes sont découpées, puis dédupliquées. Les
+points GAL sont officiels ; les points individuels sont une estimation obtenue
+en répartissant le score entre les joueurs GAL de la partie. Une limite de pages
+ou des participants manquants sont signalés, jamais présentés comme un historique
+individuel exhaustif. Seul le contenu des rubriques détaillées défile, pas la page.
+
+Tests : `node tests/lobby-wire.cjs`, `node tests/lobby-layout.cjs`,
+`node tests/team-history.cjs`.
 
 Deux choix pour que ça reste lisible plutôt qu'un mur de bulles :
 
