@@ -1833,6 +1833,10 @@ function signedScore(value) {
 }
 
 function renderTeamStats(stats) {
+  $("rankingWorldRank").textContent = stats.rank ? `#${stats.rank}` : "—";
+  $("rankingWorldPoints").textContent = stats.teamPoints == null ? "—" : signedScore(stats.teamPoints);
+  $("rankingWorldRatio").textContent = Number.isFinite(stats.ratio) ? stats.ratio.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—";
+  $("rankingSynced").textContent = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(stats.updatedAt);
   const totals = $("officialTeamTotals");
   totals.replaceChildren();
   if (stats.clan) {
@@ -1932,7 +1936,7 @@ async function loadTeamStats() {
 /* ---------------- Feed des parties du clan ---------------- */
 
 function formatDuration(seconds) {
-  const total = Math.max(0, Number(seconds) || 0);
+  const total = Math.floor(Math.max(0, Number(seconds) || 0));
   const minutes = Math.floor(total / 60);
   const rest = total % 60;
   return `${minutes} min ${String(rest).padStart(2, "0")} s`;
@@ -2322,45 +2326,38 @@ async function fetchHistorySessions(base, start, end, generation) {
   const windows = window.OpenFrontTeamHistory.scoreWindows(start, end);
   const sessions = [];
   let truncated = false;
+  const partialDays = new Set();
   const fetchWindow = async interval => {
-    const query = page => new URLSearchParams({ start: apiIsoSeconds(new Date(interval.start)), end: apiIsoSeconds(new Date(interval.end)), page: String(page), limit: "50" });
-    const first = await fetchStatsJson(`${base}/sessions?${query(1)}`);
-    const results = Array.isArray(first.results) ? [...first.results] : [];
-    const required = Math.max(1, Math.ceil((Number(first.total) || results.length) / 50));
-    const pages = Math.min(20, required);
-    for (let page = 2; page <= pages; page++) {
-      if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
-      const data = await fetchStatsJson(`${base}/sessions?${query(page)}`);
-      if (Array.isArray(data.results)) results.push(...data.results);
-    }
-    return { results, truncated: required > pages };
+    const query = new URLSearchParams({ start: apiIsoSeconds(new Date(interval.start)), end: apiIsoSeconds(new Date(interval.end)) });
+    const data = await fetchStatsJson(`${base}/history/scores?${query}`);
+    if (!Array.isArray(data.results)) throw new Error("Réponse des scores invalide");
+    return data;
   };
   for (let i = 0; i < windows.length; i += 3) {
     if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
     const batch = await Promise.all(windows.slice(i, i + 3).map(fetchWindow));
-    for (const data of batch) { sessions.push(...data.results); truncated ||= data.truncated; }
+    for (let j = 0; j < batch.length; j++) {
+      const data = batch[j];
+      sessions.push(...data.results); truncated ||= data.truncated;
+      if (data.truncated) {
+        partialDays.add(window.OpenFrontTeamHistory.dayKey(windows[i + j].start));
+        partialDays.add(window.OpenFrontTeamHistory.dayKey(windows[i + j].end - 1));
+      }
+    }
   }
-  return { sessions, truncated };
+  return { sessions, truncated, partialDays: [...partialDays] };
 }
 
 async function fetchHistoryGames(base, start, end, generation) {
-  const games = [];
-  let cursor = "";
-  for (let page = 0; page < 100; page++) {
+  const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+  for (let batch = 0; batch < 80; batch++) {
     if (generation !== state.historyGeneration || !state.historyLoading) throw new Error("chargement remplacé");
-    const data = await fetchStatsJson(`${base}/games${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
-    const batch = Array.isArray(data.results) ? data.results : [];
-    let reachedStart = false;
-    for (const game of batch) {
-      const time = new Date(game.start).getTime();
-      if (time >= start.getTime() && time < end.getTime()) games.push(game);
-      if (time < start.getTime()) reachedStart = true;
-    }
-    cursor = typeof data.nextCursor === "string" ? data.nextCursor : "";
-    if (!batch.length || !cursor || reachedStart) return { games, truncated: false };
-    if (page % 10 === 9 && generation === state.historyGeneration) $("historyStatus").textContent = `⏳ Lecture de l’historique GAL… ${page + 1} pages parcourues.`;
+    const data = await fetchStatsJson(`${base}/history/games?${query}`);
+    if (!Array.isArray(data.games)) throw new Error("Historique invalide");
+    if (data.complete) return { games: data.games, truncated: false, cached: data.cached };
+    if (generation === state.historyGeneration) $("historyStatus").textContent = `Préparation initiale du cache partagé · ${data.pages} pages indexées${data.oldest ? ` · jusqu’au ${prettyDay(window.OpenFrontTeamHistory.dayKey(data.oldest))}` : ""}. Les prochaines consultations réutiliseront ces données.`;
   }
-  return { games, truncated: Boolean(cursor) };
+  throw new Error("L’index historique n’a pas encore couvert toute la période.");
 }
 
 async function loadHistory(force = false) {
@@ -2373,9 +2370,11 @@ async function loadHistory(force = false) {
     return;
   }
   const generation = ++state.historyGeneration;
+  const startedAt = performance.now();
   const key = `${startKey}/${endKey}`;
   state.historyLoading = true;
-  state.historySelectedDay = "";
+  state.historySelectedDay = endKey;
+  state.rankingMatchLimit = 50;
   state.history = null;
   $("rankingView").setAttribute("aria-busy", "true");
   status.textContent = "⏳ Chargement des scores officiels et des joueurs de la période…";
@@ -2401,7 +2400,7 @@ async function loadHistory(force = false) {
       state.history = { ...interim, start: startKey, end: endKey, archiveLoading: true, sessionsTruncated: scores.value.truncated };
       renderDailyHistory();
       renderContributors();
-      status.textContent = `⏳ ${interim.games} scores officiels chargés. Lecture des participants pour reconstituer les contributions…`;
+      status.textContent = `${interim.games} scores officiels disponibles. Identification des joueurs depuis le cache partagé…`;
       const archive = await archivePromise;
       if (generation !== state.historyGeneration) return;
       result = {
@@ -2411,9 +2410,7 @@ async function loadHistory(force = false) {
         archiveMissing: archive.status !== "fulfilled",
         archiveTruncated: archive.status === "fulfilled" && archive.value.truncated,
       };
-      const coveredDays = scores.value.sessions.map(session => window.OpenFrontTeamHistory.dayKey(session.gameStart)).filter(Boolean).sort();
-      const oldestDay = coveredDays[0] || "";
-      for (const day of result.days) day.partial = result.sessionsTruncated && (!oldestDay || day.day <= oldestDay);
+      for (const day of result.days) day.partial = scores.value.partialDays.includes(day.day);
       historyCache.set(key, { at: Date.now(), value: result });
       if (historyCache.size > 6) historyCache.delete(historyCache.keys().next().value);
     }
@@ -2424,7 +2421,7 @@ async function loadHistory(force = false) {
     if (result.archiveMissing) warnings.push("historique joueurs indisponible");
     if (result.archiveTruncated) warnings.push("limite de pages atteinte : historique joueurs partiel");
     if (result.matched < result.games) warnings.push(`contributions reconstituées pour ${result.matched}/${result.games} parties`);
-    status.textContent = `${warnings.length ? "⚠️" : "✅"} ${prettyDay(startKey)} → ${prettyDay(endKey)} · ${result.games} parties classées · ${result.players.length} joueurs identifiés${warnings.length ? ` · ${warnings.join(" · ")}` : ""}.`;
+    status.textContent = `${warnings.length ? "⚠️ " : ""}${prettyDay(startKey)} → ${prettyDay(endKey)} · ${result.games} parties classées · ${result.players.length} joueurs identifiés · ${( (performance.now() - startedAt) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s${warnings.length ? ` · ${warnings.join(" · ")}` : ""}.`;
     renderDailyHistory();
     renderContributors();
     renderProfileTeamDetails();
@@ -2473,15 +2470,21 @@ function renderDailyHistory() {
   const history = state.history;
   if (!history) return;
   const summary = $("periodSummary");
-  const points = history.days.reduce((sum, day) => sum + day.points, 0);
-  const wins = history.days.reduce((sum, day) => sum + day.wins, 0);
-  summary.replaceChildren(statCell(history.sessionsTruncated ? "⭐ Points GAL (partiels)" : "⭐ Points GAL de la période", signedScore(points)), statCell("🎮 Parties classées", history.games), statCell("🏆 Victoires / défaites", `${wins} / ${history.games - wins}`), statCell("🛡️ Joueurs identifiés", history.archiveLoading ? "⏳" : history.players.length));
+  const matches = selectedRankingMatches();
+  const metrics = window.OpenFrontTeamHistory.analyze(matches);
+  const selected = history.days.find(day => day.day === state.historySelectedDay);
+  $("dailySelectedTitle").textContent = selected ? `Bilan du ${prettyDay(selected.day)}` : `Bilan cumulé · ${prettyDay(history.start)} → ${prettyDay(history.end)}`;
+  summary.replaceChildren(statCell(`Points nets officiels GAL${selected?.partial || !selected && history.sessionsTruncated ? " (partiels)" : ""}`, signedScore(metrics.points)), statCell("Points gagnés", signedScore(metrics.gains)), statCell("Points perdus", signedScore(metrics.deductions)), statCell("Parties classées", metrics.games),
+    statCell("Victoires / défaites", `${metrics.wins} / ${metrics.losses}`), statCell("Taux de victoire", metrics.games ? `${(metrics.wins / metrics.games * 100).toFixed(1)} %` : "—"),
+    statCell("Joueurs identifiés", history.archiveLoading ? "…" : historyPlayers().length), statCell("Participations GAL", metrics.squadGames ? metrics.participations : "—"),
+    statCell("Points nets / partie", metrics.games ? signedScore(metrics.points / metrics.games) : "—"), statCell("GAL moyens / partie", metrics.squadGames ? (metrics.participations / metrics.squadGames).toFixed(1) : "—"),
+    statCell(`Durée moyenne (${metrics.timed}/${metrics.games} matchs)`, metrics.timed ? formatDuration(metrics.seconds / metrics.timed) : "—"), statCell("Plus longue série V / D", `${metrics.winStreak} / ${metrics.lossStreak}`));
   const scale = Math.max(1, ...history.days.map(day => Math.abs(day.points)));
   const rows = history.days.map(day => {
     const button = el("button", `dayButton${state.historySelectedDay === day.day ? " selected" : ""}`, prettyDay(day.day));
     button.type = "button";
     button.setAttribute("aria-pressed", String(state.historySelectedDay === day.day));
-    button.onclick = () => { state.historySelectedDay = day.day; renderDailyHistory(); renderContributors(); };
+    button.onclick = () => { state.historySelectedDay = day.day; state.rankingMatchLimit = 50; renderDailyHistory(); renderContributors(); };
     const score = el("div", "historyScore");
     score.append(pointLabel(day.points));
     const bar = el("span", `historyMiniBar${day.points < 0 ? " loss" : ""}`);
@@ -2491,9 +2494,72 @@ function renderDailyHistory() {
       if (!day.games) score.replaceChildren(el("strong", null, "—"));
       score.prepend(el("span", "muted", "⚠️ Partiel"));
     }
-    return [button, score, day.partial && !day.games ? "—" : day.games, day.partial && !day.games ? "—" : `${day.wins} / ${day.losses}`, history.archiveLoading ? "⏳" : `${day.players.length}${day.matched < day.games ? " ⚠️" : ""}`];
+    return [button, score, day.partial && !day.games ? "—" : day.games, day.partial && !day.games ? "—" : `${day.wins} / ${day.losses}`, day.games ? `${Math.round(day.wins / day.games * 100)} %` : "—", history.archiveLoading ? "⏳" : `${day.players.length}${day.matched < day.games ? " ⚠️" : ""}`];
   });
-  $("dailyHistory").replaceChildren(dataTable(["Jour", "Points GAL", "Parties", "V / D", "Joueurs"], rows, "Historique quotidien officiel de la team GAL"));
+  $("dailyHistory").replaceChildren(dataTable(["Jour", "Points GAL", "Parties", "V / D", "Winrate", "Joueurs"], rows, "Historique quotidien officiel de la team GAL"));
+  renderRankingBreakdowns(metrics);
+  renderRankingMatches();
+}
+
+function selectedRankingMatches() {
+  const history = state.history;
+  if (!history) return [];
+  return (state.historySelectedDay ? history.days.filter(day => day.day === state.historySelectedDay) : history.days).flatMap(day => day.matches || []);
+}
+
+function renderRankingBreakdowns(metrics) {
+  const highlights = $("dailyHighlights");
+  highlights.replaceChildren();
+  for (const [title, match] of [["Meilleure partie GAL", metrics.best], ["Partie la moins rentable", metrics.worst]]) {
+    const card = el("section", "panel highlightCard");
+    card.append(el("span", "eyebrow", title));
+    if (match) card.append(el("h3", null, match.map), pointLabel(match.points), el("p", "muted", `${match.mode} · ${match.squad || "?"} GAL · ${match.population || "?"} joueurs`));
+    else card.append(el("p", "muted", "Aucune partie classée"));
+    highlights.append(card);
+  }
+  const players = historyPlayers();
+  for (const [title, player] of [["Premier contributeur estimé", players[0]], ["Dernier contributeur estimé", players.at(-1)]]) {
+    const card = el("section", "panel highlightCard");
+    card.append(el("span", "eyebrow", title));
+    if (player) {
+      const link = el("button", "playerNameButton", player.name);
+      link.type = "button"; link.onclick = () => openPlayerDetails(player.id);
+      card.append(link, pointLabel(player.points), el("p", "muted", `${player.games} parties · ${player.wins} V / ${player.losses} D`));
+    } else card.append(el("p", "muted", state.history.archiveLoading ? "Identification en cours…" : "Aucun joueur identifié"));
+    highlights.append(card);
+  }
+  for (const [host, entries] of [["rankingMaps", metrics.maps], ["rankingModes", metrics.modes]]) {
+    $(host).replaceChildren(entries.length ? dataTable(["Carte / mode", "Parties", "V / D", "Winrate", "Points GAL", "Pts / partie"], entries.map(row => [row.name, row.games, `${row.wins} / ${row.losses}`, `${Math.round(row.wins / row.games * 100)} %`, pointLabel(row.points), pointLabel(row.points / row.games)]), "Performance officielle GAL") : el("p", "muted", "Aucune partie sur ce créneau."));
+  }
+  const hours = $("rankingHours");
+  hours.replaceChildren();
+  const peak = Math.max(1, ...metrics.hours);
+  metrics.hours.forEach((count, hour) => {
+    const item = el("div", "hourColumn");
+    item.title = `${hour} h : ${count} départ${count > 1 ? "s" : ""} de partie`;
+    item.setAttribute("aria-label", item.title);
+    const bar = el("span"); bar.style.height = `${count / peak * 100}%`;
+    item.append(bar, el("small", null, hour % 3 ? "" : String(hour)));
+    hours.append(item);
+  });
+}
+
+function renderRankingMatches() {
+  const filter = $("matchResultFilter").value;
+  const matches = selectedRankingMatches().filter(m => filter === "all" || m.won === (filter === "win")).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+  const limit = state.rankingMatchLimit || 50;
+  const rows = matches.slice(0, limit).map(match => {
+    const names = el("div", "matchNames");
+    for (const player of match.players) {
+      const button = el("button", "playerNameButton", player.name); button.type = "button"; button.onclick = () => openPlayerDetails(player.id); names.append(button);
+    }
+    if (!match.players.length) names.textContent = state.history?.archiveLoading ? "Identification…" : "Participants indisponibles";
+    return [new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(match.start)), match.map, match.mode,
+      el("span", match.won ? "positive" : "negative", match.won ? "Victoire" : "Défaite"), pointLabel(match.points), match.duration ? formatDuration(match.duration) : "—", `${match.squad || "—"} / ${match.population || "—"}`, names];
+  });
+  $("rankingMatchesTitle").textContent = `Journal des parties classées · ${matches.length} résultats`;
+  $("rankingMatches").replaceChildren(rows.length ? dataTable(["Départ · Paris", "Carte", "Mode", "Résultat", "Points GAL", "Durée", "GAL / joueurs", "Participants GAL"], rows, "Détail des parties classées GAL") : el("p", "muted", "Aucune partie pour ce filtre."));
+  $("moreRankingMatches").hidden = limit >= matches.length;
 }
 
 function historyPlayers() {
@@ -2507,33 +2573,70 @@ function renderContributors() {
   $("contributorsTitle").textContent = state.historySelectedDay ? `⚔️ Contributions du ${prettyDay(state.historySelectedDay)}` : `⚔️ Contributions cumulées · ${prettyDay(history.start)} → ${prettyDay(history.end)}`;
   if (history.archiveLoading) { host.replaceChildren(el("p", "muted", "⏳ Les scores sont disponibles. Les contributions arrivent après la lecture des participants…")); return; }
   const search = $("contributorSearch").value.trim().toLocaleLowerCase("fr");
-  const players = historyPlayers();
+  const players = sortedRankingPlayers();
   const day = history.days.find(day => day.day === state.historySelectedDay);
   const totalGames = day ? day.games : history.games;
   const rows = players.map((player, index) => ({ player, rank: index + 1 })).filter(({ player }) => player.name.toLocaleLowerCase("fr").includes(search)).map(({ player, rank }) => {
     const button = el("button", "playerNameButton", player.name);
     button.type = "button";
     button.onclick = () => openPlayerDetails(player.id);
-    return [rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : rank, button, pointLabel(player.points), player.games, player.wins, player.losses,
-      `${Math.round(player.wins / player.games * 100)} %`, signedScore(player.points / player.games), totalGames ? `${Math.round(player.games / totalGames * 100)} %` : "—"];
+    const stats = window.OpenFrontTeamHistory.analyze(player.matches || []);
+    return [rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : rank, button, pointLabel(player.points), pointLabel(stats.gains), pointLabel(stats.deductions), player.games, player.wins, player.losses,
+      `${Math.round(player.wins / player.games * 100)} %`, signedScore(player.points / player.games), totalGames ? `${Math.round(player.games / totalGames * 100)} %` : "—", stats.timed ? formatDuration(stats.seconds) : "—", `${stats.winStreak} / ${stats.lossStreak}`];
   });
-  host.replaceChildren(rows.length ? dataTable(["#", "Gaulois", "Points estimés", "Parties", "V", "D", "Winrate", "Pts / partie", "Présence team"], rows, "Contributions estimées des joueurs GAL") : el("p", "muted", history.archiveMissing ? "La source qui identifie les joueurs est indisponible." : "Aucun joueur identifié pour ce filtre. Les contributions nécessitent un score officiel et les participants de la partie."));
+  host.replaceChildren(rows.length ? dataTable(["#", "Gaulois", "Net estimé", "Gains estimés", "Pertes estimées", "Parties", "V", "D", "Winrate", "Pts / partie", "Présence team", "Temps joué*", "Séries V / D"], rows, "Contributions estimées des joueurs GAL") : el("p", "muted", history.archiveMissing ? "La source qui identifie les joueurs est indisponible." : "Aucun joueur identifié pour ce filtre. Les contributions nécessitent un score officiel et les participants de la partie."));
+  host.append(el("p", "muted", "* Temps joué : somme des durées des matchs identifiés, pas le temps connecté. Les séries concernent uniquement les parties classées de la période sélectionnée. Le tri winrate doit être lu avec le nombre de parties."));
 }
 
-function playerTeamContent(player) {
+function sortedRankingPlayers() {
+  if (!state.history) return [];
+  const key = $("contributorSort").value;
+  const value = player => key === "winrate" ? player.wins / player.games : player[key];
+  return [...historyPlayers()].sort((a, b) => value(b) - value(a) || b.points - a.points || b.games - a.games || a.name.localeCompare(b.name, "fr"));
+}
+
+function exportRanking() {
+  if (!state.history || state.history.archiveLoading) return;
+  const players = sortedRankingPlayers().map((player, index) => ({ player, rank: index + 1 })).filter(({ player }) => player.name.toLocaleLowerCase("fr").includes($("contributorSearch").value.trim().toLocaleLowerCase("fr")));
+  // Spreadsheet formula injection protection, including usernames.
+  const escape = value => `"${(typeof value === "string" ? value.replace(/^[\s]*[=+@-]/, "'$&") : String(value)).replace(/"/g, '""')}"`;
+  const rows = [["Jour / période", "Rang", "Joueur", "Net estimé", "Gains estimés", "Pertes estimées", "Parties", "Victoires", "Défaites", "Winrate %", "Pts / partie estimés", "Présence team %", "Temps de matchs (secondes)", "Série victoires", "Série défaites"]];
+  const games = state.historySelectedDay ? state.history.days.find(day => day.day === state.historySelectedDay)?.games : state.history.games;
+  players.forEach(({ player: p, rank }) => {
+    const stats = window.OpenFrontTeamHistory.analyze(p.matches || []);
+    rows.push([state.historySelectedDay || `${state.history.start}/${state.history.end}`, rank, p.name, p.points, stats.gains, stats.deductions, p.games, p.wins, p.losses, p.wins / p.games * 100, p.points / p.games, games ? p.games / games * 100 : 0, stats.seconds, stats.winStreak, stats.lossStreak]);
+  });
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + rows.map(row => row.map(escape).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  const link = el("a"); link.href = url; link.download = `GAL-${state.historySelectedDay || state.history.start + "-" + state.history.end}.csv`; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function playerTeamContent(periodPlayer) {
+  const selected = state.historySelectedDay ? historyPlayers().find(p => p.id === periodPlayer.id) : null;
+  const player = selected || periodPlayer;
+  const population = selected ? historyPlayers() : state.history.players;
+  const teamGames = selected ? state.history.days.find(day => day.day === state.historySelectedDay).games : state.history.games;
   const content = el("div");
   const metrics = el("div", "statsGrid");
   metrics.append(statCell("⭐ Contribution estimée", signedScore(player.points)), statCell("🎯 Parties avec GAL", player.games), statCell("🏆 Victoires", player.wins), statCell("💀 Défaites", player.losses), statCell("⚖️ Winrate avec GAL", `${Math.round(player.wins / player.games * 100)} %`), statCell("🚀 Points / partie", signedScore(player.points / player.games)));
-  const rank = state.history.players.findIndex(row => row.id === player.id) + 1;
-  metrics.append(statCell("🏅 Rang sur la période", `${rank} / ${state.history.players.length}`), statCell("🛡️ Présence dans les parties GAL", state.history.games ? `${Math.round(player.games / state.history.games * 100)} %` : "—"));
-  if (player.daily?.length) {
-    const byScore = [...player.daily].sort((a, b) => b.points - a.points);
+  const rank = population.findIndex(row => row.id === player.id) + 1;
+  metrics.append(statCell(selected ? "🏅 Rang estimé du jour" : "🏅 Rang estimé sur la période", `${rank} / ${population.length}`), statCell("🛡️ Présence dans les parties GAL", teamGames ? `${Math.round(player.games / teamGames * 100)} %` : "—"));
+  if (periodPlayer.daily?.length) {
+    const byScore = [...periodPlayer.daily].sort((a, b) => b.points - a.points);
     metrics.append(statCell("🔥 Meilleur jour joué", `${prettyDay(byScore[0].day)} · ${signedScore(byScore[0].points)}`, "wide"), statCell("🧊 Pire jour joué", `${prettyDay(byScore.at(-1).day)} · ${signedScore(byScore.at(-1).points)}`, "wide"));
   }
-  content.append(el("p", "muted", `Période : ${prettyDay(state.history.start)} → ${prettyDay(state.history.end)}. Statistiques sur les parties classées identifiées, pas sur toute la carrière.`), metrics);
-  const days = [...(player.daily || [])].reverse();
+  content.append(el("p", "muted", `${selected ? `Journée : ${prettyDay(state.historySelectedDay)}` : `Période : ${prettyDay(state.history.start)} → ${prettyDay(state.history.end)}`}. Statistiques sur les parties classées identifiées, pas sur toute la carrière.`), metrics);
+  const days = [...(periodPlayer.daily || [])].reverse();
+  if (selected) content.append(el("p", "muted", `Cumul sur la période : ${signedScore(periodPlayer.points)} points estimés · ${periodPlayer.games} parties · ${periodPlayer.wins} V / ${periodPlayer.losses} D.`));
   if (days.length) content.append(el("h3", null, "📅 Contribution jour par jour"), dataTable(["Jour", "Points estimés", "Parties", "V / D"], days.map(day => [prettyDay(day.day), pointLabel(day.points), day.games, `${day.wins} / ${day.losses}`]), "Contributions quotidiennes du joueur"));
   content.append(el("p", "muted", "Les points individuels sont une répartition estimée du score GAL. Les parties sans participants identifiables ne sont pas attribuées."));
+  const focus = selected || player;
+  const stats = window.OpenFrontTeamHistory.analyze(focus.matches || []);
+  content.append(el("h3", null, state.historySelectedDay && selected ? `Détail du ${prettyDay(state.historySelectedDay)}` : "Détail de la période"));
+  const detail = el("div", "statsGrid");
+  detail.append(statCell("Points nets estimés", signedScore(focus.points)), statCell("Gains / pertes estimés", `${signedScore(stats.gains)} / ${signedScore(stats.deductions)}`),
+    statCell("Temps de match cumulé", stats.timed ? formatDuration(stats.seconds) : "—"), statCell("Séries maximales V / D", `${stats.winStreak} / ${stats.lossStreak}`));
+  content.append(detail, dataTable(["Carte", "Parties", "V / D", "Points estimés"], stats.maps.map(row => [row.name, row.games, `${row.wins} / ${row.losses}`, pointLabel(row.points)]), "Statistiques GAL du joueur par carte"));
   return content;
 }
 
@@ -2587,13 +2690,18 @@ function initSiteShell() {
   document.querySelector(".headerBrand").onclick = event => { event.preventDefault(); showView("play"); };
   const today = window.OpenFrontTeamHistory.dayKey(new Date());
   $("historyStart").max = $("historyEnd").max = today;
-  setHistoryPeriod(7);
+  setHistoryPeriod(1);
   $("historyFilters").onsubmit = event => { event.preventDefault(); loadHistory(); };
   $("refreshHistory").onclick = () => { loadTeamStats(); loadHistory(true); };
   $("historyWeek").onclick = () => { setHistoryPeriod(7); loadHistory(); };
   $("historyMonth").onclick = () => { setHistoryPeriod(30); loadHistory(); };
+  $("historyToday").onclick = () => { setHistoryPeriod(1); loadHistory(); };
   $("historyAllDays").onclick = () => { state.historySelectedDay = ""; renderDailyHistory(); renderContributors(); };
   $("contributorSearch").oninput = renderContributors;
+  $("contributorSort").onchange = renderContributors;
+  $("exportRanking").onclick = exportRanking;
+  $("matchResultFilter").onchange = () => { state.rankingMatchLimit = 50; renderRankingMatches(); };
+  $("moreRankingMatches").onclick = () => { state.rankingMatchLimit = (state.rankingMatchLimit || 50) + 50; renderRankingMatches(); };
   $("closePlayerDialog").onclick = () => $("playerDialog").close();
   $("playerDialog").onclick = event => {
     const dialog = $("playerDialog");

@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { HistoryIndex } from "./history-index.js";
 
 /* ==================================================================
    GAL — passerelle vers l'API OpenFront
@@ -341,6 +342,20 @@ function sharedRoom(env) {
   return env.PRESENCE.getByName(env.CLAN_TAG || "GAL");
 }
 
+export class HistoryArchive extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.index = new HistoryIndex(ctx.storage.sql, async (type, params) => {
+      const tag = encodeURIComponent((this.env.CLAN_TAG || "GAL").toUpperCase());
+      const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "").map(([k, v]) => [k, String(v)]));
+      const path = type === "games" ? `/clans/${tag}/games?${query}` : `/public/clan/${tag}/sessions?${query}`;
+      return JSON.parse(await callApi(path, { env: this.env, auth: type === "games" }));
+    });
+  }
+  async games(start, end) { return this.index.games(start, end); }
+  async scores(start, end) { return this.index.scores(start, end); }
+}
+
 async function getJwt(env) {
   if (cachedJwt && Date.now() < jwtExpiresAt) return cachedJwt;
 
@@ -630,6 +645,17 @@ export default {
     const qs = url.searchParams;
 
     try {
+      if (path === "/history/games" || path === "/history/scores") {
+        const start = Date.parse(qs.get("start") || "");
+        const end = Date.parse(qs.get("end") || "");
+        const max = path.endsWith("scores") ? 86400000 : 32 * 86400000;
+        if (request.method !== "GET" || !Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > max || end > Date.now() + 86400000 || start < Date.UTC(2020, 0, 1)) {
+          throw new HttpError(400, "Période d’historique invalide");
+        }
+        const archive = env.HISTORY.getByName(env.CLAN_TAG || "GAL");
+        const data = path.endsWith("scores") ? await archive.scores(start, end) : await archive.games(start, end);
+        return json(JSON.stringify(data), env, request);
+      }
       // --- Fiche du clan (un jeton invité suffirait, mais autant réutiliser) ---
       if (path === "/clan") {
         return json(await callApi(`/clans/${tag}`, { env, auth: true, ttl: 600 }), env, request);

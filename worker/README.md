@@ -163,3 +163,22 @@ Sur le portail développeur, **Reset Secret**, puis
 
 Déconnecte le compte de service depuis OpenFront (ça révoque la session),
 récupère le nouveau `refreshToken` et refais `wrangler secret put`.
+## Historique partagé du classement
+
+`HISTORY` / `HistoryArchive` est un index SQLite distinct de `PRESENCE`.
+La migration additive `v2-history` ne modifie ni les présences ni les secrets.
+
+- `GET /history/games?start=ISO&end=ISO` : intervalle maximal de 32 jours ; retourne les archives compactes, `complete`, `oldest`, `pages`, `updated` et `cached`.
+- `GET /history/scores?start=ISO&end=ISO` : intervalle maximal de 24 heures ; retourne les scores officiels, `truncated` et `cached`.
+
+Le premier parcours reprend le curseur enregistré, par lots bornés de 12 pages.
+Une plage indexée est servie directement depuis SQLite ; les consultations concurrentes partagent le parcours actif.
+La tête est rafraîchie une fois par minute. Les scores récents ont un TTL de 60 secondes, les jours passés de six heures pour prendre en compte les corrections tardives.
+Le navigateur garde également les périodes complètes cinq minutes et affiche les scores avant la fin de l’identification des participants.
+Une initialisation 30 jours peut rester longue si l’amont est lent : elle n’est pas répétée pour chaque visiteur. Aucun total de joueurs incomplet n’est présenté comme complet.
+
+Les points GAL sont officiels ; leur répartition individuelle à parts égales reste une estimation.
+Les durées sont les durées des matchs identifiés, pas le temps connecté ni le temps de survie individuel.
+Les parties sans score officiel ne font pas partie du classement. Les absences de participants ou de durées sont signalées, jamais remplacées par des statistiques inventées.
+
+Tests : `node tests/history-index.cjs`, `node tests/team-history.cjs` depuis la racine.

@@ -25,6 +25,14 @@ class_name = "PresenceRoom"
 tag = "v1"
 new_sqlite_classes = ["PresenceRoom"]
 
+[[durable_objects.bindings]]
+name = "HISTORY"
+class_name = "HistoryArchive"
+
+[[migrations]]
+tag = "v2-history"
+new_sqlite_classes = ["HistoryArchive"]
+
 # Aucun secret ici : le dépôt est public. Ils sont posés par
 #   npx wrangler secret put OF_REFRESH_TOKEN       compte de service OpenFront
 #   npx wrangler secret put DISCORD_CLIENT_SECRET  application Discord
