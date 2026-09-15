@@ -9,71 +9,6 @@
 
 /* ---------------- Constantes ---------------- */
 
-// Les workers seront déterminés dynamiquement depuis l'API cluster
-let CLUSTER_INFO = null;
-let SELECTED_SERVER = null;
-
-// Fonction pour obtenir la liste des serveurs depuis l'API OpenFront
-async function fetchClusterInfo() {
-  try {
-    const response = await fetch('https://api.openfront.io/cluster.json?site=openfront.io', {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!response.ok) throw new Error(`API cluster responded ${response.status}`);
-    const data = await response.json();
-    console.log('Cluster info received:', data);
-    return data;
-  } catch (error) {
-    console.error('Failed to fetch cluster info:', error);
-    // Fallback vers l'ancienne méthode si l'API ne répond pas
-    return null;
-  }
-}
-
-// Sélectionne un serveur parmi ceux disponibles
-function selectServerFromCluster(cluster) {
-  if (!cluster || !cluster.servers) return null;
-  
-  // Cherche les serveurs "open" d'abord
-  const openServers = Object.entries(cluster.servers)
-    .filter(([_, server]) => server.state === 'open')
-    .map(([letter, server]) => ({ letter, ...server }));
-  
-  if (openServers.length > 0) {
-    // Choisit un serveur aléatoire parmi les "open"
-    return openServers[Math.floor(Math.random() * openServers.length)];
-  }
-  
-  // Si aucun serveur "open", essaie les "draining"
-  const drainingServers = Object.entries(cluster.servers)
-    .filter(([_, server]) => server.state === 'draining')
-    .map(([letter, server]) => ({ letter, ...server }));
-  
-  if (drainingServers.length > 0) {
-    return drainingServers[Math.floor(Math.random() * drainingServers.length)];
-  }
-  
-  return null;
-}
-
-// Génère l'URL WebSocket basée sur le serveur sélectionné
-function getWebSocketURL(server, workerId) {
-  if (!server) {
-    // Fallback: ancienne méthode
-    return `wss://openfront.io/w${workerId}/lobbies`;
-  }
-  // Nouvelle méthode: se connecte directement au serveur
-  return `wss://${server.host}/w${workerId}/lobbies`;
-}
-
-const WORKERS   = ["w0", "w1", "w2", "w3", "w4"];  // Gardé pour compatibilité fallback
-const WS_URL    = w => {
-  if (SELECTED_SERVER) {
-    const workerId = WORKERS.indexOf(w);
-    return getWebSocketURL(SELECTED_SERVER, workerId !== -1 ? workerId : 0);
-  }
-  return `wss://openfront.io/${w}/lobbies`;  // Fallback
-};
 const JOIN_URL  = id => `https://openfront.io/game/${encodeURIComponent(id)}`;
 const THUMB_URL = slug => `assets/maps/${encodeURIComponent(slug)}.webp`;
 
@@ -309,71 +244,122 @@ function setStatus(kind) {
   scheduleRender();
 }
 
+// Connexion multi-workers : agrège les lobbies de tous les workers
+const multiWorkerState = {
+  connections: [],
+  gen: 0,
+};
+
 async function connect() {
   closeSocket();
   const gen = ++state.wsGen;
+  multiWorkerState.gen = gen;
   
-  // Essaie d'obtenir les infos du cluster si on ne les a pas encore
-  if (!CLUSTER_INFO) {
-    setStatus("connecting");
-    console.log('Fetching cluster info...');
-    CLUSTER_INFO = await fetchClusterInfo();
-    if (CLUSTER_INFO) {
-      SELECTED_SERVER = selectServerFromCluster(CLUSTER_INFO);
-      console.log('Selected server:', SELECTED_SERVER);
+  setStatus("connecting");
+  console.log('[MULTI-WORKER] Connexion aux serveurs OpenFront...');
+  
+  // Essaie les serveurs bleu et vert d'OpenFront
+  // L'API cluster est bloquée par CORS, donc on essaie les serveurs de production connus
+  const SERVERS = [
+    { host: 'blue.openfront.io', workers: 5 },
+    { host: 'green.openfront.io', workers: 5 },
+    { host: 'openfront.io', workers: 5 },  // Fallback
+  ];
+  
+  for (const server of SERVERS) {
+    for (let i = 0; i < server.workers; i++) {
+      connectToWorker(i, gen, server.host);
     }
   }
-  
-  const worker = WORKERS[Math.floor(Math.random() * WORKERS.length)];
-  const wsUrl = WS_URL(worker);
-  console.log('Connecting to:', wsUrl);
-  setStatus("connecting");
+}
 
+function connectToWorker(workerId, gen, host = 'openfront.io') {
+  const wsUrl = `wss://${host}/w${workerId}/lobbies`;
+  console.log(`[WORKER-${workerId}@${host}] Connexion à ${wsUrl}`);
+  
   let ws;
   try {
     ws = new WebSocket(wsUrl);
-  } catch {
-    scheduleReconnect(gen);
+  } catch (error) {
+    console.error(`[WORKER-${workerId}@${host}] Erreur création WebSocket:`, error);
     return;
   }
+  
   ws.binaryType = "arraybuffer";
-  state.ws = ws;
+  
+  const connInfo = {
+    ws,
+    workerId,
+    host,
+    connected: false,
+    url: wsUrl,
+  };
+  
+  multiWorkerState.connections.push(connInfo);
 
   ws.onopen = () => {
     if (gen !== state.wsGen) return;
-    state.retries = 0;
-    setStatus("live");
-    console.log("WebSocket connected successfully to", wsUrl);
+    connInfo.connected = true;
+    console.log(`[WORKER-${workerId}@${host}] ✅ Connecté`);
+    
+    // Met à jour le statut global quand au moins un worker est connecté
+    const anyConnected = multiWorkerState.connections.some(c => c.connected);
+    if (anyConnected) {
+      state.retries = 0;
+      setStatus("live");
+    }
   };
+  
   ws.onmessage = ev => {
     if (gen !== state.wsGen) return;
-    console.log('[DEBUG] Message WebSocket reçu, type:', typeof ev.data, 'taille:', ev.data.byteLength || ev.data.length);
+    
     let msg;
     try {
       msg = typeof ev.data === "string"
         ? JSON.parse(ev.data)
         : window.OpenFrontLobbyWire.decodeLobbyMessage(ev.data);
-      console.log('[DEBUG] Message décodé avec succès');
     } catch (error) {
-      console.error("Trame de lobbies OpenFront illisible", error);
-      try { ws.close(); } catch { /* deja ferme */ }
+      console.error(`[WORKER-${workerId}@${host}] Trame illisible:`, error);
       return;
     }
-    applyMessage(msg);
+    
+    applyMessage(msg, workerId, host);
   };
-  ws.onclose = () => { if (gen === state.wsGen) scheduleReconnect(gen); };
-  ws.onerror = (error) => { 
-    console.error('WebSocket error:', error);
-    try { ws.close(); } catch { /* déjà fermé */ } 
+  
+  ws.onclose = () => {
+    if (gen !== state.wsGen) return;
+    connInfo.connected = false;
+    console.log(`[WORKER-${workerId}@${host}] 🔴 Déconnecté`);
+    
+    // Si TOUS les workers sont déconnectés, on tente une reconnexion
+    const allDisconnected = multiWorkerState.connections.every(c => !c.connected);
+    if (allDisconnected && gen === state.wsGen) {
+      scheduleReconnect(gen);
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error(`[WORKER-${workerId}@${host}] Erreur WebSocket:`, error);
   };
 }
 
 function closeSocket() {
-  if (!state.ws) return;
-  const ws = state.ws;
-  state.ws = null;
-  ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
-  try { ws.close(); } catch { /* déjà fermé */ }
+  // Fermer tous les workers
+  for (const conn of multiWorkerState.connections) {
+    if (conn.ws) {
+      conn.ws.onopen = conn.ws.onmessage = conn.ws.onclose = conn.ws.onerror = null;
+      try { conn.ws.close(); } catch { /* déjà fermé */ }
+    }
+  }
+  multiWorkerState.connections = [];
+  
+  // Compatibilité avec l'ancien code
+  if (state.ws) {
+    const ws = state.ws;
+    state.ws = null;
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    try { ws.close(); } catch { /* déjà fermé */ }
+  }
 }
 
 function scheduleReconnect(gen) {
@@ -384,47 +370,37 @@ function scheduleReconnect(gen) {
   setTimeout(() => { if (gen === state.wsGen) connect(); }, delay);
 }
 
-function applyMessage(msg) {
-  console.log('[DEBUG] Message WebSocket reçu:', msg);
-  
+function applyMessage(msg, workerId = null, host = null) {
   if (typeof msg.serverTime === "number") {
     state.clockOffset = msg.serverTime - Date.now();
   }
 
+  const workerTag = workerId !== null ? `[WORKER-${workerId}@${host}]` : '[MSG]';
+
   if (msg.type === "counts" && msg.counts) {
     let totalPlayers = 0;
-    const lobbiesWithPlayers = [];
     for (const [id, n] of Object.entries(msg.counts)) {
       const playerCount = Number(n) || 0;
       totalPlayers += playerCount;
-      if (playerCount > 0) {
-        lobbiesWithPlayers.push({ id, players: playerCount });
-      }
       const g = state.games.get(id);
       if (g) g.players = playerCount;
     }
-    console.log(`[DEBUG] Mise à jour counts: ${Object.keys(msg.counts).length} lobbies, ${totalPlayers} joueurs au total`);
-    if (lobbiesWithPlayers.length > 0) {
-      console.log('[DEBUG] Lobbies avec joueurs:', lobbiesWithPlayers);
-    }
+    //console.log(`${workerTag} Counts: ${Object.keys(msg.counts).length} lobbies, ${totalPlayers} joueurs`);
   } else if (msg.games) {
-    // Snapshot complet : il fait autorité, les lobbies absents ont disparu.
-    const next = new Map();
     let totalGames = 0;
     for (const [category, list] of Object.entries(msg.games)) {
       if (!Array.isArray(list)) continue;
-      console.log(`[DEBUG] Catégorie ${category}:`, list.length, 'lobbies');
       for (const raw of list) {
         if (!raw || !raw.gameID) continue;
-        next.set(raw.gameID, normalize(raw));
+        const normalized = normalize(raw);
+        state.games.set(raw.gameID, normalized);
         totalGames++;
       }
     }
-    console.log('[DEBUG] Total lobbies après snapshot:', totalGames);
-    console.log('[DEBUG] Lobbies avec joueurs:', Array.from(next.values()).filter(g => g.players > 0).length);
-    state.games = next;
+    console.log(`${workerTag} Snapshot: ${totalGames} lobbies`);
+    const withPlayers = Array.from(state.games.values()).filter(g => g.players > 0).length;
+    console.log(`Total agrégé: ${state.games.size} lobbies, ${withPlayers} peuplés`);
   } else {
-    console.log('[DEBUG] Message ignoré (pas de type counts ni games)');
     return;
   }
 
