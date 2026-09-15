@@ -425,6 +425,19 @@ function orderedGames() {
 
   let list = state.order.map(id => state.games.get(id)).filter(Boolean);
 
+  // Filtrer les parties pleines (full)
+  list = list.filter(g => {
+    if (g.capacity === 0) return true; // Pas de limite définie
+    return g.players < g.capacity; // Cacher si full
+  });
+
+  // Filtrer les parties avec moins de 10% de capacité (trop vides)
+  list = list.filter(g => {
+    if (g.capacity === 0) return g.players > 0; // Si pas de capacité, au moins 1 joueur
+    const fillRate = g.players / g.capacity;
+    return fillRate >= 0.1; // Au moins 10% de remplissage
+  });
+
   if (conf.hideEmpty) list = list.filter(g => g.players > 0);
   if (conf.type && conf.type !== "all") {
     list = list.filter(g => conf.type === "hvn" ? g.hvn : g.cat === conf.type);
