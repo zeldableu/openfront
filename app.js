@@ -1960,19 +1960,16 @@ async function calculateTeamStats() {
     ? sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0)
     : null;
   const wins = sessions ? sessions.filter(session => session.hasWon).length : null;
-  const teamPoints = leaderboard && clanIndex >= 0
-    ? (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0)
+  // Calculer les points nets: l'API ne renvoie pas weightedLosses directement
+  // On doit le calculer depuis le ratio: ratio = wins / losses => losses = wins / ratio
+  const teamPoints = leaderboard && clanIndex >= 0 && clan.weightedWins && clan.weightedWLRatio
+    ? (() => {
+        const wins = Number(clan.weightedWins) || 0;
+        const ratio = Number(clan.weightedWLRatio) || 1;
+        const losses = ratio > 0 ? wins / ratio : 0;
+        return wins - losses;
+      })()
     : null;
-  
-  // Debug: afficher les valeurs dans la console
-  if (clanIndex >= 0) {
-    console.log('[GAL DEBUG] Clan data:', {
-      weightedWins: clan.weightedWins,
-      weightedLosses: clan.weightedLosses,
-      teamPoints: teamPoints,
-      fullClan: clan
-    });
-  }
 
   return {
     rank: clanIndex >= 0 ? clanIndex + 1 : 0,
