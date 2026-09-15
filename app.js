@@ -1996,11 +1996,8 @@ window.getLobbiesAPI = function() {
   const games = [];
   for (const [id, game] of state.games) {
     if (game.cat !== 'team') continue; // Que les parties team
-    if (game.players > 0) continue;   // Que les lobbies vides
-    if (!game.startsAt || game.startsAt <= 0) continue; // Que celles avec timer
     
-    const remaining = game.startsAt - now();
-    if (remaining <= 0) continue; // Timer expiré
+    const remaining = game.startsAt ? game.startsAt - now() : 0;
     
     games.push({
       gameId: game.id,
@@ -2026,7 +2023,7 @@ window.getLobbiesAPI = function() {
     status: state.status,
     timestamp: Date.now(),
     gamesCount: state.games.size,
-    emptyTeamGames: games,
+    allTeamGames: games,
   };
 };
 
