@@ -1960,15 +1960,9 @@ async function calculateTeamStats() {
     ? sessions.reduce((sum, session) => sum + (Number(session.score) || 0), 0)
     : null;
   const wins = sessions ? sessions.filter(session => session.hasWon).length : null;
-  // Calculer les points nets: l'API ne renvoie pas weightedLosses directement
-  // On doit le calculer depuis le ratio: ratio = wins / losses => losses = wins / ratio
-  const teamPoints = leaderboard && clanIndex >= 0 && clan.weightedWins && clan.weightedWLRatio
-    ? (() => {
-        const wins = Number(clan.weightedWins) || 0;
-        const ratio = Number(clan.weightedWLRatio) || 1;
-        const losses = ratio > 0 ? wins / ratio : 0;
-        return wins - losses;
-      })()
+  // Points team = juste les victoires (weightedWins)
+  const teamPoints = leaderboard && clanIndex >= 0 && clan.weightedWins
+    ? Number(clan.weightedWins) || 0
     : null;
 
   return {
