@@ -2004,10 +2004,14 @@ function signedScore(value) {
 /* API JSON pour le bot */
 window.getLobbiesAPI = function() {
   const games = [];
+  const now_ms = now();
+  
   for (const [id, game] of state.games) {
     // Retourner TOUTES les parties (team ET ffa)
+    // MAIS exclure les parties déjà lancées
+    if (!game.startsAt || game.startsAt <= now_ms) continue; // Ignorer si déjà lancée
     
-    const remaining = game.startsAt ? game.startsAt - now() : 0;
+    const remaining = game.startsAt - now_ms;
     
     games.push({
       gameId: game.id,
