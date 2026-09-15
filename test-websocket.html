@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Test WebSocket OpenFront</title>
+</head>
+<body>
+<h1>Test WebSocket OpenFront</h1>
+<button onclick="testWebSocket()">Tester WebSocket</button>
+<div id="output"></div>
+
+<script>
+function testWebSocket() {
+  const output = document.getElementById('output');
+  output.innerHTML = '<p>Test en cours...</p>';
+  
+  // Les workers disponibles selon app.js
+  const workers = ['w0', 'w1', 'w2', 'w3', 'w4'];
+  
+  let connected = false;
+  
+  workers.forEach(worker => {
+    const url = `wss://openfront.io/${worker}/lobbies`;
+    output.innerHTML += `<p>Essai de connexion à: ${url}</p>`;
+    
+    try {
+      const ws = new WebSocket(url);
+      
+      ws.onopen = function() {
+        connected = true;
+        output.innerHTML += `<p style="color: green">✓ Connexion réussie à ${url}</p>`;
+        ws.close();
+      };
+      
+      ws.onerror = function() {
+        output.innerHTML += `<p style="color: red">✗ Échec de connexion à ${url}</p>`;
+      };
+      
+      ws.onclose = function() {
+        if (!connected) {
+          output.innerHTML += `<p style="color: orange">Connexion fermée à ${url}</p>`;
+        }
+      };
+      
+      // Timeout après 5 secondes
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          output.innerHTML += `<p style="color: orange">Timeout sur ${url}</p>`;
+          ws.close();
+        }
+      }, 5000);
+      
+    } catch (error) {
+      output.innerHTML += `<p style="color: red">Erreur: ${error.message}</p>`;
+    }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Diagnostic WebSocket OpenFront</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #050a14; color: #eaf2ff; }
+  .test { margin: 10px 0; padding: 10px; border: 1px solid #3aa0ff; border-radius: 5px; }
+  .success { background: rgba(76, 175, 80, 0.1); color: #4caf50; }
+  .error { background: rgba(244, 67, 54, 0.1); color: #f44336; }
+  .pending { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
+  .output { margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.5); border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Diagnostic WebSocket OpenFront</h1>
+
+<div id="tests"></div>
+<div id="output" class="output"></div>
+
+<script>
+const log = (msg) => {
+  const el = document.getElementById('output');
+  el.textContent += msg + '\n';
+  console.log(msg);
+};
+
+const addTest = (name, status, message) => {
+  const testsEl = document.getElementById('tests');
+  const test = document.createElement('div');
+  test.className = `test ${status}`;
+  test.innerHTML = `<strong>${name}</strong>: ${message}`;
+  testsEl.appendChild(test);
+};
+
+log('=== Démarrage du diagnostic ===\n');
+
+// Test 1: HTTPS openfront.io
+log('Test 1: Vérification si openfront.io répond (HTTPS)');
+fetch('https://openfront.io/', { mode: 'no-cors', timeout: 5000 })
+  .then(r => {
+    log('✅ openfront.io répond en HTTPS');
+    addTest('HTTPS openfront.io', 'success', 'Domaine accessible');
+  })
+  .catch(e => {
+    log(`❌ openfront.io ne répond pas: ${e.message}`);
+    addTest('HTTPS openfront.io', 'error', `Erreur: ${e.message}`);
+  });
+
+// Test 2: WebSocket test sur openfront.io
+log('\nTest 2: Test WebSocket sur openfront.io');
+setTimeout(() => {
+  try {
+    const ws = new WebSocket('wss://openfront.io/w0/lobbies');
+    ws.onopen = () => {
+      log('✅ WebSocket OUVERT sur openfront.io/w0/lobbies');
+      addTest('WebSocket openfront.io', 'success', 'Connexion établie');
+      ws.close();
+    };
+    ws.onerror = (e) => {
+      log(`❌ Erreur WebSocket openfront.io: ${e}`);
+      addTest('WebSocket openfront.io', 'error', 'Impossible de se connecter');
+    };
+    ws.onmessage = (msg) => {
+      log(`📨 Message reçu: ${msg.data.substring(0, 100)}`);
+    };
+    setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CLOSED) {
+        log('⏱️ WebSocket timeout (pas de connexion après 3s)');
+        addTest('WebSocket openfront.io', 'pending', 'Timeout après 3s');
+        ws.close();
+      }
+    }, 3000);
+  } catch (e) {
+    log(`❌ Erreur création WebSocket: ${e.message}`);
+    addTest('WebSocket openfront.io', 'error', e.message);
+  }
+}, 1000);
+
+// Test 3: WebSocket sur blue.openfront.io
+log('\nTest 3: Test WebSocket sur blue.openfront.io');
+setTimeout(() => {
+  try {
+    const ws = new WebSocket('wss://blue.openfront.io/w0/lobbies');
+    ws.onopen = () => {
+      log('✅ WebSocket OUVERT sur blue.openfront.io/w0/lobbies');
+      addTest('WebSocket blue.openfront.io', 'success', 'Connexion établie');
+      ws.close();
+    };
+    ws.onerror = () => {
+      log('❌ Erreur WebSocket blue.openfront.io');
+      addTest('WebSocket blue.openfront.io', 'error', 'Impossible de se connecter');
+    };
+    setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CLOSED) {
+        log('⏱️ WebSocket blue timeout');
+        addTest('WebSocket blue.openfront.io', 'pending', 'Timeout après 3s');
+        ws.close();
+      }
+    }, 3000);
+  } catch (e) {
+    log(`❌ Erreur création WebSocket blue: ${e.message}`);
+    addTest('WebSocket blue.openfront.io', 'error', e.message);
+  }
+}, 2000);
+
+// Test 4: WebSocket sur green.openfront.io
+log('\nTest 4: Test WebSocket sur green.openfront.io');
+setTimeout(() => {
+  try {
+    const ws = new WebSocket('wss://green.openfront.io/w0/lobbies');
+    ws.onopen = () => {
+      log('✅ WebSocket OUVERT sur green.openfront.io/w0/lobbies');
+      addTest('WebSocket green.openfront.io', 'success', 'Connexion établie');
+      ws.close();
+    };
+    ws.onerror = () => {
+      log('❌ Erreur WebSocket green.openfront.io');
+      addTest('WebSocket green.openfront.io', 'error', 'Impossible de se connecter');
+    };
+    setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CLOSED) {
+        log('⏱️ WebSocket green timeout');
+        addTest('WebSocket green.openfront.io', 'pending', 'Timeout après 3s');
+        ws.close();
+      }
+    }, 3000);
+  } catch (e) {
+    log(`❌ Erreur création WebSocket green: ${e.message}`);
+    addTest('WebSocket green.openfront.io', 'error', e.message);
+  }
+}, 3000);
+
+// Résumé
+setTimeout(() => {
+  log('\n=== Diagnostic terminé ===');
+  log('👆 Vérifiez les résultats des tests ci-dessus.');
+  log('Si les WebSocket ne se connectent pas, OpenFront a peut-être changé son architecture.');
+}, 4500);
+
+</script>
+
+</body>
+</html>

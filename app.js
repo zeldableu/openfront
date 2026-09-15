@@ -258,12 +258,10 @@ async function connect() {
   setStatus("connecting");
   console.log('[MULTI-WORKER] Connexion aux serveurs OpenFront...');
   
-  // Essaie les serveurs bleu et vert d'OpenFront
-  // L'API cluster est bloquée par CORS, donc on essaie les serveurs de production connus
+  // Essaie les serveurs bleu et vert d'OpenFront avec fallback
   const SERVERS = [
-    { host: 'blue.openfront.io', workers: 5 },
     { host: 'green.openfront.io', workers: 5 },
-    { host: 'openfront.io', workers: 5 },  // Fallback
+    { host: 'blue.openfront.io', workers: 5 },
   ];
   
   for (const server of SERVERS) {
@@ -1991,6 +1989,50 @@ function signedScore(value) {
     maximumFractionDigits: 2,
   });
   return `${amount > 0 ? "+" : amount < 0 ? "−" : ""}${number}`;
+}
+
+/* API JSON pour le bot */
+window.getLobbiesAPI = function() {
+  const games = [];
+  for (const [id, game] of state.games) {
+    if (game.cat !== 'team') continue; // Que les parties team
+    if (game.players > 0) continue;   // Que les lobbies vides
+    if (!game.startsAt || game.startsAt <= 0) continue; // Que celles avec timer
+    
+    const remaining = game.startsAt - now();
+    if (remaining <= 0) continue; // Timer expiré
+    
+    games.push({
+      gameId: game.id,
+      map: game.map,
+      players: game.players,
+      capacity: game.capacity,
+      teams: game.teams,
+      perTeam: game.perTeam,
+      difficulty: game.difficulty,
+      secondsRemaining: Math.round(remaining / 1000),
+      startsAt: game.startsAt,
+    });
+  }
+  
+  // Trier par timer (15 secondes = idéal)
+  games.sort((a, b) => {
+    const distA = Math.abs(a.secondsRemaining - 15);
+    const distB = Math.abs(b.secondsRemaining - 15);
+    return distA - distB;
+  });
+  
+  return {
+    status: state.status,
+    timestamp: Date.now(),
+    gamesCount: state.games.size,
+    emptyTeamGames: games,
+  };
+};
+
+// Exposer via fetch si besoin (pour les requêtes cross-origin)
+if (typeof window !== 'undefined') {
+  window.lobbyAPI = window.getLobbiesAPI;
 }
 
 function renderTeamStats(stats) {

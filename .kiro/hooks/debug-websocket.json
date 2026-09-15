@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Debug WebSocket Lobbies",
+      "trigger": "PostToolUse",
+      "matcher": "execute_pwsh|read_file",
+      "action": {
+        "type": "agent",
+        "prompt": "L'utilisateur a un problème avec son site OpenFront qui montre seulement des maps vides alors que le site officiel OpenFront montre des lobbies qui se remplissent. On doit diagnostiquer pourquoi la connexion WebSocket ne fonctionne pas. On a déjà examiné le code et créé un test. Maintenant on doit vérifier si les endpoints WebSocket sont toujours valides et si OpenFront a changé son accès public."
+      }
+    }
+  ]
+}

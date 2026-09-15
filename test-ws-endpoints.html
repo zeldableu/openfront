@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test des endpoints WebSocket OpenFront</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        .test { margin: 15px 0; padding: 10px; border: 1px solid #444; background: #222; }
+        .pass { border-color: #0a0; background: #0a0015; }
+        .fail { border-color: #a00; background: #a00015; }
+        .pending { border-color: #aa0; background: #aa0015; }
+        .icon { display: inline-block; width: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Diagnostic OpenFront WebSocket</h1>
+    <div id="results"></div>
+
+    <script>
+        const results = document.getElementById('results');
+        const hosts = [
+            { name: 'openfront.io', workers: 5 },
+            { name: 'blue.openfront.io', workers: 5 },
+            { name: 'green.openfront.io', workers: 5 }
+        ];
+
+        async function testEndpoint(host, workerId) {
+            return new Promise((resolve) => {
+                const wsUrl = `wss://${host}/w${workerId}/lobbies`;
+                const timeout = setTimeout(() => {
+                    resolve({ status: 'timeout', wsUrl });
+                }, 5000);
+
+                try {
+                    const ws = new WebSocket(wsUrl);
+                    
+                    ws.onopen = () => {
+                        clearTimeout(timeout);
+                        ws.close(1000, 'diagnostic');
+                        resolve({ status: 'connected', wsUrl });
+                    };
+                    
+                    ws.onerror = (error) => {
+                        clearTimeout(timeout);
+                        resolve({ status: 'error', wsUrl, error: error.toString() });
+                    };
+                    
+                    ws.onclose = () => {
+                        clearTimeout(timeout);
+                    };
+                } catch (error) {
+                    clearTimeout(timeout);
+                    resolve({ status: 'exception', wsUrl, error: error.message });
+                }
+            });
+        }
+
+        async function runTests() {
+            for (const server of hosts) {
+                const serverDiv = document.createElement('div');
+                serverDiv.innerHTML = `<h2>Server: ${server.name}</h2>`;
+                results.appendChild(serverDiv);
+
+                for (let i = 0; i < server.workers; i++) {
+                    const testDiv = document.createElement('div');
+                    testDiv.className = 'test pending';
+                    testDiv.innerHTML = `<span class="icon">⏳</span> Worker ${i}: Testing...`;
+                    results.appendChild(testDiv);
+
+                    const result = await testEndpoint(server.name, i);
+                    
+                    if (result.status === 'connected') {
+                        testDiv.className = 'test pass';
+                        testDiv.innerHTML = `<span class="icon">✅</span> Worker ${i}: CONNECTED to ${result.wsUrl}`;
+                    } else if (result.status === 'timeout') {
+                        testDiv.className = 'test fail';
+                        testDiv.innerHTML = `<span class="icon">⏱️</span> Worker ${i}: TIMEOUT (no response)`;
+                    } else {
+                        testDiv.className = 'test fail';
+                        testDiv.innerHTML = `<span class="icon">❌</span> Worker ${i}: ${result.status.toUpperCase()}`;
+                    }
+                }
+            }
+
+            // Add summary
+            const summary = document.createElement('div');
+            summary.style.marginTop = '30px';
+            summary.style.padding = '15px';
+            summary.style.border = '2px solid #0aa';
+            summary.innerHTML = `
+                <h3>📋 Summary</h3>
+                <p>Check which endpoints above show ✅ CONNECTED.</p>
+                <p><strong>If only openfront.io works:</strong> Update app.js to remove blue/green hosts.</p>
+                <p><strong>If none work:</strong> OpenFront may have changed their WebSocket infrastructure.</p>
+            `;
+            results.appendChild(summary);
+        }
+
+        runTests();
+    </script>
+</body>
+</html>
