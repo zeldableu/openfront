@@ -178,8 +178,26 @@
  </section>
  <section class="siteView detailView" id="rankingView" aria-labelledby="rankingViewTitle" hidden>
    <div class="pageHeading"><div><span class="eyebrow">GAL / CENTRE DE PERFORMANCE</span><h1 id="rankingViewTitle">Classement & bilan quotidien</h1><p>Une journée, chaque joueur, chaque partie. Toutes les dates sont à l’heure de Paris.</p></div><button class="btn" id="refreshHistory" type="button">Actualiser</button></div>
-   <section class="rankingMasthead panel" id="rankingGlobal" aria-label="Situation mondiale de GAL"><div><span class="eyebrow">CLASSEMENT MONDIAL</span><strong id="rankingWorldRank">—</strong></div><div><span>Points cumulés GAL</span><strong id="rankingWorldPoints">—</strong></div><div><span>Ratio mondial</span><strong id="rankingWorldRatio">—</strong></div><div><span>Dernière synchronisation</span><strong id="rankingSynced">—</strong></div></section>
-   <form class="historyFilters panel" id="historyFilters">
+   <section class="worldPodium panel" id="worldPodium" aria-label="Top 5 teams mondiales">
+     <h2>🏆 Podium Mondial</h2>
+     <div class="podiumRanks" id="podiumRanks">
+       <p class="muted">Chargement du classement...</p>
+     </div>
+     <div class="galProgress" id="galProgress" hidden>
+       <p class="galRankLabel"><strong id="galRankText">GAL #X</strong></p>
+       <p class="nextRankInfo">Il manque <strong id="pointsToNext">—</strong> points pour la <strong id="nextRankNumber">—</strong></p>
+     </div>
+   </section>
+   <section class="rankingMasthead panel" id="rankingGlobal" aria-label="Stats GAL du jour">
+     <div><span class="eyebrow">AUJOURD'HUI</span><strong id="statsDailyPoints">—</strong><small>Points</small></div>
+     <div><span>Parties</span><strong id="statsGames">—</strong></div>
+     <div><span>Victoires</span><strong id="statsWins">—</strong></div>
+     <div><span>Défaites</span><strong id="statsLosses">—</strong></div>
+     <div><span>Synchro</span><strong id="rankingSynced">—</strong></div>
+   </section>
+   
+   <!-- Sections détaillées masquées - trop complexe -->
+   <form class="historyFilters panel" id="historyFilters" hidden>
      <label>Du <input id="historyStart" type="date" required></label><label>Au <input id="historyEnd" type="date" required></label>
      <button class="btn primary" type="submit">Afficher</button>
      <button class="btn ghost" id="historyToday" type="button">Aujourd’hui</button><button class="btn ghost" id="historyWeek" type="button">7 jours</button><button class="btn ghost" id="historyMonth" type="button">30 jours</button>

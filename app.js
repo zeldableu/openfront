@@ -1962,9 +1962,8 @@ async function calculateTeamStats() {
     worst,
     hasClanHistory: Boolean(games),
     missing,
-    // Le classement complet sert au profil : sans lui, impossible de dire
-    // à quelqu'un où il se situe s'il n'est ni sur le podium ni dernier.
     ranking,
+    leaderboard: leaderboard, // Ajouter le leaderboard complet
     updatedAt: end,
   };
 }
@@ -1979,84 +1978,106 @@ function signedScore(value) {
 }
 
 function renderTeamStats(stats) {
-  $("rankingWorldRank").textContent = stats.rank ? `#${stats.rank}` : "—";
-  $("rankingWorldPoints").textContent = stats.teamPoints == null ? "—" : signedScore(stats.teamPoints);
-  $("rankingWorldRatio").textContent = Number.isFinite(stats.ratio) ? stats.ratio.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—";
+  // Podium top 5
+  renderWorldPodium(stats);
+  
+  // Stats du jour simplifiées
   $("rankingSynced").textContent = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(stats.updatedAt);
-  const totals = $("officialTeamTotals");
-  totals.replaceChildren();
-  if (stats.clan) {
-    for (const [key, label] of [["games", "🎮 Parties"], ["wins", "🏆 Victoires"], ["losses", "💀 Défaites"], ["playerSessions", "🛡️ Participations"], ["weightedWins", "⭐ Points gagnés"], ["weightedLosses", "🧊 Points perdus"]]) {
-      const value = stats.clan[key] == null ? NaN : Number(stats.clan[key]);
-      totals.append(statCell(label, Number.isFinite(value) ? value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—"));
-    }
-  } else totals.append(el("p", "muted", "Totaux officiels indisponibles."));
-  $("statsRank").textContent = stats.rank ? `#${stats.rank}` : "—";
-  $("statsRankLabel").textContent = stats.rank
-    ? `🏆 GAL est ${stats.rank}${stats.rank === 1 ? "er" : "e"} mondial !`
-    : "🏆 GAL au sommet";
-  $("statsRatio").textContent = Number.isFinite(stats.ratio)
-    ? stats.ratio.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : "—";
-
-  // `null` distingue « pas encore chargé » de « zéro », que `signedScore`
-  // afficherait tous les deux en +0,00 — un mensonge tranquille.
+  
   const scoreOrDash = (node, value) => {
     node.textContent = value === null ? "—" : signedScore(value);
     node.className = value === null ? "" : value > 0 ? "positive" : value < 0 ? "negative" : "";
   };
-  scoreOrDash($("statsTeamPoints"), stats.teamPoints);
   scoreOrDash($("statsDailyPoints"), stats.points);
 
   $("statsWins").textContent = stats.wins === null ? "—" : String(stats.wins);
   $("statsLosses").textContent = stats.losses === null ? "—" : String(stats.losses);
   $("statsGames").textContent = stats.games === null
-    ? "— parties"
-    : `${stats.games} partie${stats.games === 1 ? "" : "s"}`;
+    ? "—"
+    : String(stats.games);
 
-  const top = $("statsTop");
-  top.replaceChildren();
-  if (!stats.top.length) {
-    const item = el("li", "empty");
-    item.append(el("span", "dailyTopName", stats.hasClanHistory
-      ? "Aucune contribution aujourd'hui"
-      : "Historique du clan indisponible"));
-    top.append(item);
-  } else {
-    for (const player of stats.top) {
-      const item = el("li");
-      const name = el("span", "dailyTopName", player.name);
-      name.title = `${player.name} · ${player.wins} victoire${player.wins === 1 ? "" : "s"} / ${player.games} parties`;
-      const score = el("strong", `dailyTopPoints${player.points < 0 ? " negative" : ""}`, signedScore(player.points));
-      item.append(name, score);
-      top.append(item);
+  // Anciens éléments pour compatibilité
+  const totals = $("officialTeamTotals");
+  if (totals) {
+    totals.replaceChildren();
+    if (stats.clan) {
+      for (const [key, label] of [["games", "🎮 Parties"], ["wins", "🏆 Victoires"], ["losses", "💀 Défaites"], ["playerSessions", "🛡️ Participations"], ["weightedWins", "⭐ Points gagnés"], ["weightedLosses", "🧊 Points perdus"]]) {
+        const value = stats.clan[key] == null ? NaN : Number(stats.clan[key]);
+        totals.append(statCell(label, Number.isFinite(value) ? value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }) : "—"));
+      }
+    } else totals.append(el("p", "muted", "Totaux officiels indisponibles."));
+  }
+
+  const message = $("statsMessage");
+  if (message) {
+    if (stats.missing && stats.missing.length) {
+      message.textContent = `Indisponible : ${stats.missing.join(", ")}.`;
+      message.hidden = false;
+    } else {
+      message.hidden = true;
     }
   }
+}
 
-  const worst = $("statsWorst");
-  worst.replaceChildren();
-  if (stats.worst) {
-    const name = el("span", "dailyWorstName", stats.worst.name);
-    name.title = `${stats.worst.name} · ${stats.worst.wins} victoire${stats.worst.wins === 1 ? "" : "s"} / ${stats.worst.games} parties`;
-    const score = el("strong", `dailyWorstPoints${stats.worst.points < 0 ? " negative" : ""}`, signedScore(stats.worst.points));
-    worst.append(name, score);
-  } else {
-    worst.textContent = stats.hasClanHistory
-      ? "Personne pour l'instant 🎉"
-      : "—";
+function renderWorldPodium(stats) {
+  const host = $("podiumRanks");
+  const progress = $("galProgress");
+  
+  if (!stats || !stats.clan) {
+    host.innerHTML = '<p class="muted">Classement mondial indisponible</p>';
+    progress.hidden = true;
+    return;
   }
 
-  $("statsUpdated").textContent = `🕒 ${new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit",
-  }).format(stats.updatedAt)}`;
+  // Récupérer le leaderboard complet
+  const rows = leaderboardRows(stats.leaderboard || []);
+  if (!rows.length) {
+    host.innerHTML = '<p class="muted">Classement mondial indisponible</p>';
+    progress.hidden = true;
+    return;
+  }
 
-  // Dire ce qui manque, sinon un « — » isolé passe pour une valeur nulle.
-  const message = $("statsMessage");
-  if (stats.missing && stats.missing.length) {
-    message.textContent = `Indisponible : ${stats.missing.join(", ")}.`;
-    message.hidden = false;
+  // Calculer les points nets pour chaque team
+  const teamsWithPoints = rows.map((clan, index) => ({
+    rank: index + 1,
+    tag: clan.clanTag || clan.tag || "???",
+    points: (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0),
+    isGal: (clan.clanTag || clan.tag || "").toUpperCase() === clanName().toUpperCase()
+  }));
+
+  // Top 5
+  const top5 = teamsWithPoints.slice(0, 5);
+  const galTeam = teamsWithPoints.find(t => t.isGal);
+  
+  // Afficher le podium
+  host.replaceChildren();
+  for (const team of top5) {
+    const podiumItem = el("div", `podiumItem${team.isGal ? " isGal" : ""}`);
+    const medal = team.rank === 1 ? "🥇" : team.rank === 2 ? "🥈" : team.rank === 3 ? "🥉" : `#${team.rank}`;
+    podiumItem.innerHTML = `
+      <span class="podiumRank">${medal}</span>
+      <strong class="podiumTag">${team.tag}</strong>
+      <span class="podiumPoints ${team.points < 0 ? "negative" : team.points > 0 ? "positive" : ""}">${signedScore(team.points)}</span>
+    `;
+    host.append(podiumItem);
+  }
+
+  // Afficher la progression GAL
+  if (galTeam) {
+    progress.hidden = false;
+    $("galRankText").textContent = `GAL est #${galTeam.rank}`;
+    
+    // Calculer points manquants pour next rank
+    if (galTeam.rank > 1) {
+      const nextTeam = teamsWithPoints[galTeam.rank - 2]; // rank avant (index = rank - 1, donc -2 pour avant)
+      const pointsNeeded = nextTeam.points - galTeam.points;
+      $("pointsToNext").textContent = signedScore(pointsNeeded);
+      $("nextRankNumber").textContent = `#${nextTeam.rank} (${nextTeam.tag})`;
+    } else {
+      $("nextRankInfo").textContent = "🏆 GAL est déjà #1 !";
+    }
   } else {
-    message.hidden = true;
+    progress.hidden = true;
   }
 }
 
