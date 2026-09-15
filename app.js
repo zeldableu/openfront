@@ -2015,6 +2015,9 @@ window.getLobbiesAPI = function() {
     // Exclure aussi les parties trop anciennes (terminées ou stuck)
     if (game.startsAt + MAX_GAME_DURATION_MS < now_ms) continue;
     
+    // Exclure les parties pleines
+    if (game.capacity > 0 && game.players >= game.capacity) continue;
+    
     const remaining = game.startsAt - now_ms;
     
     games.push({
