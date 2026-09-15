@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lobbies OpenFront</title>
 <meta name="description" content="Lobbies OpenFront.io en direct — GAL OpenFront Team.">
-<link rel="stylesheet" href="styles.css?v=20260915-1">
+<link rel="stylesheet" href="styles.css?v=20260915-2">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050a14'/><circle cx='16' cy='16' r='7' fill='%233aa0ff'/></svg>">
 </head>
 <body>
@@ -136,33 +136,7 @@
   </div>
 
   <div class="board" id="board">
-    <section class="col">
-      <div class="colHeader">Free For All <span class="colCount" id="countFfa">0</span></div>
-      <div class="colCards" id="colFfa"></div>
-      <nav class="colNav" aria-label="Pages des maps chacun pour soi">
-        <button class="mapPageButton" id="colFfaPrev" type="button" aria-label="Maps précédentes">‹</button>
-        <span id="colFfaPage" aria-live="polite">Page 1 / 1</span>
-        <button class="mapPageButton" id="colFfaNext" type="button" aria-label="Maps suivantes">›</button>
-      </nav>
-    </section>
-    <section class="col">
-      <div class="colHeader">Équipes <span class="colCount" id="countTeam">0</span></div>
-      <div class="colCards" id="colTeam"></div>
-      <nav class="colNav" aria-label="Pages des maps en équipes">
-        <button class="mapPageButton" id="colTeamPrev" type="button" aria-label="Maps précédentes">‹</button>
-        <span id="colTeamPage" aria-live="polite">Page 1 / 1</span>
-        <button class="mapPageButton" id="colTeamNext" type="button" aria-label="Maps suivantes">›</button>
-      </nav>
-    </section>
-    <section class="col">
-      <div class="colHeader">Spécial <span class="colCount" id="countSpecial">0</span></div>
-      <div class="colCards" id="colSpecial"></div>
-      <nav class="colNav" aria-label="Pages des maps spéciales">
-        <button class="mapPageButton" id="colSpecialPrev" type="button" aria-label="Maps précédentes">‹</button>
-        <span id="colSpecialPage" aria-live="polite">Page 1 / 1</span>
-        <button class="mapPageButton" id="colSpecialNext" type="button" aria-label="Maps suivantes">›</button>
-      </nav>
-    </section>
+    <div class="cardGrid" id="cardGrid"></div>
   </div>
 
   <div class="empty" id="emptyState" hidden>
@@ -297,6 +271,6 @@
 <script src="lobby-wire.js?v=20260914-1"></script>
 <script src="lobby-layout.js?v=20260915-1"></script>
 <script src="team-history.js?v=20260914-4"></script>
-<script src="app.js?v=20260915-2"></script>
+<script src="app.js?v=20260915-3"></script>
 </body>
 </html>

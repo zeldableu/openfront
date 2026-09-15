@@ -12,11 +12,8 @@
 const JOIN_URL  = id => `https://openfront.io/game/${encodeURIComponent(id)}`;
 const THUMB_URL = slug => `assets/maps/${encodeURIComponent(slug)}.webp`;
 
-const COLUMNS = [
-  { cat: "ffa",     cards: "colFfa",     count: "countFfa" },
-  { cat: "team",    cards: "colTeam",    count: "countTeam" },
-  { cat: "special", cards: "colSpecial", count: "countSpecial" },
-];
+const COLUMNS = []; // Obsolète - remplacé par grille unique
+
 
 /* Libellés des modificateurs connus. Ceux que le serveur ajoutera plus tard
    sont libellés automatiquement à partir de leur nom. */
@@ -88,7 +85,6 @@ const state = {
   renderQueued: false,
   domStale: false,
   cardEls: new Map(),
-  mapPages: { ffa: 0, team: 0, special: 0 },
   view: "play",
   history: null,
   historySelectedDay: "",
@@ -531,8 +527,8 @@ function render() {
   state.domStale = false;
 
   const list = orderedGames();
-  const buckets = { ffa: [], team: [], special: [] };
-  for (const g of list) (buckets[g.cat] || buckets.special).push(g);
+  // Trier par timestamp décroissant (plus récentes en haut)
+  list.sort((a, b) => b.startsAt - a.startsAt);
 
   const live = new Set(list.map(g => g.id));
   const previousPositions = snapshotCardPositions(live);
@@ -568,52 +564,32 @@ function render() {
     }
   }
 
-  for (const col of COLUMNS) {
-    const games = buckets[col.cat];
-    $(col.count).textContent = games.length;
-    const host = $(col.cards);
-    const rows = window.OpenFrontLobbyLayout.rowsForHeight(host.clientHeight);
-    const slice = window.OpenFrontLobbyLayout.pageOf(games.length, rows, state.mapPages[col.cat]);
-    state.mapPages[col.cat] = slice.page;
-    host.style.setProperty("--map-rows", String(rows));
-    const pageLabel = $(col.cards + "Page");
-    const label = `Page ${slice.page + 1} / ${slice.pages}`;
-    if (pageLabel.textContent !== label) pageLabel.textContent = label;
-    pageLabel.title = games.length ? `Maps ${slice.start + 1} à ${slice.end} sur ${games.length}` : "Aucune map";
-    $(col.cards + "Prev").disabled = slice.page === 0;
-    $(col.cards + "Next").disabled = slice.page === slice.pages - 1;
-    const desiredNodes = [];
-    for (const [index, g] of games.entries()) {
-      let node = state.cardEls.get(g.id);
-      if (!node) { node = buildCard(g); state.cardEls.set(g.id, node); }
-      updateCard(node, g);
-      const wasHidden = node.hidden;
-      node.hidden = index < slice.start || index >= slice.end;
-      if (node.hidden) stopCardMove(node);
-      else if (wasHidden && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
-      }
-      desiredNodes.push(node);
-    }
+  // Nouvelle grille unique au lieu de 3 colonnes
+  const host = $("cardGrid");
+  const desiredNodes = [];
+  for (const g of list) {
+    let node = state.cardEls.get(g.id);
+    if (!node) { node = buildCard(g); state.cardEls.set(g.id, node); }
+    updateCard(node, g);
+    node.hidden = false;
+    desiredNodes.push(node);
+  }
 
-    // Les trames `counts` arrivent ~2 fois/s : ne jamais déplacer les cartes
-    // si leur ordre n'a pas changé, sinon le navigateur perd l'état :hover et
-    // la cellule clignote sous la souris.
-    const currentNodes = [...host.children]
-      .filter(node => !node.classList.contains("leaving"));
-    const orderChanged = currentNodes.length !== desiredNodes.length ||
-      desiredNodes.some((node, i) => currentNodes[i] !== node);
-    if (orderChanged) {
-      const fragment = document.createDocumentFragment();
-      for (const node of desiredNodes) fragment.append(node);
-      host.append(fragment);
-    }
+  // Mettre à jour l'ordre des cartes si nécessaire
+  const currentNodes = [...host.children]
+    .filter(node => !node.classList.contains("leaving"));
+  const orderChanged = currentNodes.length !== desiredNodes.length ||
+    desiredNodes.some((node, i) => currentNodes[i] !== node);
+  if (orderChanged) {
+    const fragment = document.createDocumentFragment();
+    for (const node of desiredNodes) fragment.append(node);
+    host.append(fragment);
   }
 
   animateCardReflow(previousPositions);
 
   $("emptyState").hidden = list.length > 0 || state.status === "connecting";
-  $("board").hidden = list.length === 0 && state.status !== "connecting";
+  $("cardGrid").hidden = list.length === 0 && state.status !== "connecting";
 }
 
 function buildCard(g) {
@@ -2596,14 +2572,13 @@ function focusGame(gameId) {
   const game = state.games.get(gameId);
   if (!game) { toast("Cette map n’est plus dans les lobbies."); return; }
   showView("play");
-  const col = COLUMNS.find(column => column.cat === game.cat) || COLUMNS[2];
-  const host = $(col.cards);
-  const games = orderedGames().filter(entry => entry.cat === game.cat);
-  state.mapPages[col.cat] = Math.floor(games.findIndex(entry => entry.id === gameId) / window.OpenFrontLobbyLayout.rowsForHeight(host.clientHeight));
   render();
-  const board = $("board");
-  board.scrollTo({ left: host.parentElement.offsetLeft - board.offsetLeft, behavior: "smooth" });
-  state.cardEls.get(gameId)?.focus({ preventScroll: true });
+  // Scroll vers la carte dans la grille
+  const card = state.cardEls.get(gameId);
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    card.focus({ preventScroll: true });
+  }
 }
 
 const historyCache = new Map();

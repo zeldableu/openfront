@@ -1022,77 +1022,26 @@ main {
 .board {
   flex: 1;
   min-height: 0;
+  padding: 15px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.cardGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  align-items: stretch;
-  width: min(1320px, calc(100% - var(--logo-safe) - var(--logo-safe)));
-  max-width: 1320px;
-  margin: 0 auto;
-  overflow: hidden;
-}
-
-.col {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  overflow: hidden;
-}
-
-.colHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(4, 9, 18, .58);
-  backdrop-filter: blur(10px);
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.colCount {
-  margin-left: auto;
-  min-width: 22px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--accent);
-  font-size: 11px;
-  letter-spacing: 0;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.colCards {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: repeat(var(--map-rows, 2), minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  width: 100%;
 }
 
 /* ---------------- Carte ---------------- */
 
-/* La hauteur dépend de l'écran, jamais du nombre de lobbies disponibles. */
+/* La hauteur est automatique (auto), pas 100% */
 .card {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr) auto;
-  height: 100%;
-  min-height: 0;
-  align-items: end;
-  gap: 0;
-  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -1252,14 +1201,13 @@ main {
 
 .cardImage {
   position: relative;
-  grid-column: 1 / -1;
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: 160px;
   aspect-ratio: auto;
   border-radius: 9px 9px 0 0;
   background: var(--bg-2);
   overflow: hidden;
+  flex-shrink: 0;
 }
 .cardImage.mapImageMissing,
 .winCard.mapImageMissing {
@@ -1373,24 +1321,27 @@ main {
 .cardBar > i.full { background: var(--warn); }
 
 .cardText {
-  grid-column: 1 / -1;
+  flex: 1;
   min-width: 0;
-  padding: 8px 10px 9px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .cardHeading { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .cardHeading .cardTitle { flex: 1; min-width: 0; }
-.cardDetails { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
+.cardDetails { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 20px; }
 .cardDetails .cardMode { flex: 1; min-width: 0; margin-top: 0; }
 .cardTitle {
   font-weight: 750;
-  font-size: 16px;
+  font-size: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cardMode {
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--ink-3);
   white-space: nowrap;
   overflow: hidden;
@@ -1425,13 +1376,13 @@ main {
 .players {
   position: absolute;
   right: 10px;
-  bottom: 16px;
+  bottom: 10px;
   z-index: 3;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 6px;
-  background: rgba(3, 8, 16, .86);
+  background: rgba(3, 8, 16, .92);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -1441,17 +1392,17 @@ main {
   top: 10px;
   right: 10px;
   z-index: 4;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   border-radius: 6px;
-  background: rgba(4, 18, 31, .9);
+  background: rgba(4, 18, 31, .92);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 700;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
-.time.soon { color: var(--warn); }
-.time.idle { color: var(--ink-3); }
+.time.soon { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.time.idle { color: var(--ink-3); border-color: color-mix(in srgb, var(--ink-3) 35%, transparent); }
 
 
 .empty {
