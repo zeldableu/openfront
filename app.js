@@ -392,10 +392,20 @@ function applyMessage(msg) {
   }
 
   if (msg.type === "counts" && msg.counts) {
-    console.log('[DEBUG] Mise à jour counts:', Object.keys(msg.counts).length, 'lobbies');
+    let totalPlayers = 0;
+    const lobbiesWithPlayers = [];
     for (const [id, n] of Object.entries(msg.counts)) {
+      const playerCount = Number(n) || 0;
+      totalPlayers += playerCount;
+      if (playerCount > 0) {
+        lobbiesWithPlayers.push({ id, players: playerCount });
+      }
       const g = state.games.get(id);
-      if (g) g.players = Number(n) || 0;
+      if (g) g.players = playerCount;
+    }
+    console.log(`[DEBUG] Mise à jour counts: ${Object.keys(msg.counts).length} lobbies, ${totalPlayers} joueurs au total`);
+    if (lobbiesWithPlayers.length > 0) {
+      console.log('[DEBUG] Lobbies avec joueurs:', lobbiesWithPlayers);
     }
   } else if (msg.games) {
     // Snapshot complet : il fait autorité, les lobbies absents ont disparu.
