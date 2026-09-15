@@ -2005,11 +2005,15 @@ function signedScore(value) {
 window.getLobbiesAPI = function() {
   const games = [];
   const now_ms = now();
+  const MAX_GAME_DURATION_MS = 45 * 60 * 1000; // 45 minutes max
   
   for (const [id, game] of state.games) {
     // Retourner TOUTES les parties (team ET ffa)
     // MAIS exclure les parties déjà lancées
-    if (!game.startsAt || game.startsAt <= now_ms) continue; // Ignorer si déjà lancée
+    if (!game.startsAt || game.startsAt <= now_ms) continue;
+    
+    // Exclure aussi les parties trop anciennes (terminées ou stuck)
+    if (game.startsAt + MAX_GAME_DURATION_MS < now_ms) continue;
     
     const remaining = game.startsAt - now_ms;
     
