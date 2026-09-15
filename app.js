@@ -1952,6 +1952,16 @@ async function calculateTeamStats() {
 
   const ranking = [...contributors.values()]
     .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name, "fr"));
+  
+  // Masquer les points de Coton (privacy)
+  const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+  for (const player of ranking) {
+    if (hiddenPlayers.has(player.name)) {
+      player.points = null; // Masquer les points
+      player.pointsHidden = true;
+    }
+  }
+  
   const top = ranking.slice(0, 3);
   const worst = ranking.length ? ranking[ranking.length - 1] : null;
   const points = sessions
@@ -2069,7 +2079,11 @@ function renderTeamStats(stats) {
       const item = el("li");
       const name = el("span", "dailyTopName", player.name);
       name.title = `${player.name} · ${player.wins} victoire${player.wins === 1 ? "" : "s"} / ${player.games} parties`;
-      const score = el("strong", `dailyTopPoints${player.points < 0 ? " negative" : ""}`, signedScore(player.points));
+      
+      // Flouter les points si pointsHidden
+      let scoreText = player.pointsHidden ? "?" : signedScore(player.points);
+      const score = el("strong", `dailyTopPoints${player.pointsHidden ? "" : player.points < 0 ? " negative" : ""}`, scoreText);
+      
       item.append(name, score);
       top.append(item);
     }
@@ -2080,7 +2094,11 @@ function renderTeamStats(stats) {
   if (stats.worst) {
     const name = el("span", "dailyWorstName", stats.worst.name);
     name.title = `${stats.worst.name} · ${stats.worst.wins} victoire${stats.worst.wins === 1 ? "" : "s"} / ${stats.worst.games} parties`;
-    const score = el("strong", `dailyWorstPoints${stats.worst.points < 0 ? " negative" : ""}`, signedScore(stats.worst.points));
+    
+    // Flouter les points si pointsHidden
+    let scoreText = stats.worst.pointsHidden ? "?" : signedScore(stats.worst.points);
+    const score = el("strong", `dailyWorstPoints${stats.worst.pointsHidden ? "" : stats.worst.points < 0 ? " negative" : ""}`, scoreText);
+    
     worst.append(name, score);
   } else {
     worst.textContent = stats.hasClanHistory
