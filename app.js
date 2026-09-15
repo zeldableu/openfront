@@ -347,11 +347,13 @@ async function connect() {
   };
   ws.onmessage = ev => {
     if (gen !== state.wsGen) return;
+    console.log('[DEBUG] Message WebSocket reçu, type:', typeof ev.data, 'taille:', ev.data.byteLength || ev.data.length);
     let msg;
     try {
       msg = typeof ev.data === "string"
         ? JSON.parse(ev.data)
         : window.OpenFrontLobbyWire.decodeLobbyMessage(ev.data);
+      console.log('[DEBUG] Message décodé avec succès');
     } catch (error) {
       console.error("Trame de lobbies OpenFront illisible", error);
       try { ws.close(); } catch { /* deja ferme */ }
@@ -383,11 +385,14 @@ function scheduleReconnect(gen) {
 }
 
 function applyMessage(msg) {
+  console.log('[DEBUG] Message WebSocket reçu:', msg);
+  
   if (typeof msg.serverTime === "number") {
     state.clockOffset = msg.serverTime - Date.now();
   }
 
   if (msg.type === "counts" && msg.counts) {
+    console.log('[DEBUG] Mise à jour counts:', Object.keys(msg.counts).length, 'lobbies');
     for (const [id, n] of Object.entries(msg.counts)) {
       const g = state.games.get(id);
       if (g) g.players = Number(n) || 0;
@@ -395,15 +400,21 @@ function applyMessage(msg) {
   } else if (msg.games) {
     // Snapshot complet : il fait autorité, les lobbies absents ont disparu.
     const next = new Map();
-    for (const list of Object.values(msg.games)) {
+    let totalGames = 0;
+    for (const [category, list] of Object.entries(msg.games)) {
       if (!Array.isArray(list)) continue;
+      console.log(`[DEBUG] Catégorie ${category}:`, list.length, 'lobbies');
       for (const raw of list) {
         if (!raw || !raw.gameID) continue;
         next.set(raw.gameID, normalize(raw));
+        totalGames++;
       }
     }
+    console.log('[DEBUG] Total lobbies après snapshot:', totalGames);
+    console.log('[DEBUG] Lobbies avec joueurs:', Array.from(next.values()).filter(g => g.players > 0).length);
     state.games = next;
   } else {
+    console.log('[DEBUG] Message ignoré (pas de type counts ni games)');
     return;
   }
 
