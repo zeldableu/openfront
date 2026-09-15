@@ -9,8 +9,71 @@
 
 /* ---------------- Constantes ---------------- */
 
-const WORKERS   = ["w0", "w1", "w2", "w3", "w4"];
-const WS_URL    = w => `wss://openfront.io/${w}/lobbies`;
+// Les workers seront déterminés dynamiquement depuis l'API cluster
+let CLUSTER_INFO = null;
+let SELECTED_SERVER = null;
+
+// Fonction pour obtenir la liste des serveurs depuis l'API OpenFront
+async function fetchClusterInfo() {
+  try {
+    const response = await fetch('https://api.openfront.io/cluster.json?site=openfront.io', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) throw new Error(`API cluster responded ${response.status}`);
+    const data = await response.json();
+    console.log('Cluster info received:', data);
+    return data;
+  } catch (error) {
+    console.error('Failed to fetch cluster info:', error);
+    // Fallback vers l'ancienne méthode si l'API ne répond pas
+    return null;
+  }
+}
+
+// Sélectionne un serveur parmi ceux disponibles
+function selectServerFromCluster(cluster) {
+  if (!cluster || !cluster.servers) return null;
+  
+  // Cherche les serveurs "open" d'abord
+  const openServers = Object.entries(cluster.servers)
+    .filter(([_, server]) => server.state === 'open')
+    .map(([letter, server]) => ({ letter, ...server }));
+  
+  if (openServers.length > 0) {
+    // Choisit un serveur aléatoire parmi les "open"
+    return openServers[Math.floor(Math.random() * openServers.length)];
+  }
+  
+  // Si aucun serveur "open", essaie les "draining"
+  const drainingServers = Object.entries(cluster.servers)
+    .filter(([_, server]) => server.state === 'draining')
+    .map(([letter, server]) => ({ letter, ...server }));
+  
+  if (drainingServers.length > 0) {
+    return drainingServers[Math.floor(Math.random() * drainingServers.length)];
+  }
+  
+  return null;
+}
+
+// Génère l'URL WebSocket basée sur le serveur sélectionné
+function getWebSocketURL(server, workerId) {
+  if (!server) {
+    // Fallback: ancienne méthode
+    return `wss://openfront.io/w${workerId}/lobbies`;
+  }
+  // Nouvelle méthode: se connecte directement au serveur
+  return `wss://${server.host}/w${workerId}/lobbies`;
+}
+
+const WORKERS   = ["w0", "w1", "w2", "w3", "w4"];  // Gardé pour compatibilité fallback
+const WS_URL    = w => {
+  if (SELECTED_SERVER) {
+    const workerId = WORKERS.indexOf(w);
+    return getWebSocketURL(SELECTED_SERVER, workerId !== -1 ? workerId : 0);
+  }
+  return `wss://openfront.io/${w}/lobbies`;  // Fallback
+};
 const JOIN_URL  = id => `https://openfront.io/game/${encodeURIComponent(id)}`;
 const THUMB_URL = slug => `assets/maps/${encodeURIComponent(slug)}.webp`;
 
@@ -246,15 +309,29 @@ function setStatus(kind) {
   scheduleRender();
 }
 
-function connect() {
+async function connect() {
   closeSocket();
   const gen = ++state.wsGen;
+  
+  // Essaie d'obtenir les infos du cluster si on ne les a pas encore
+  if (!CLUSTER_INFO) {
+    setStatus("connecting");
+    console.log('Fetching cluster info...');
+    CLUSTER_INFO = await fetchClusterInfo();
+    if (CLUSTER_INFO) {
+      SELECTED_SERVER = selectServerFromCluster(CLUSTER_INFO);
+      console.log('Selected server:', SELECTED_SERVER);
+    }
+  }
+  
   const worker = WORKERS[Math.floor(Math.random() * WORKERS.length)];
+  const wsUrl = WS_URL(worker);
+  console.log('Connecting to:', wsUrl);
   setStatus("connecting");
 
   let ws;
   try {
-    ws = new WebSocket(WS_URL(worker));
+    ws = new WebSocket(wsUrl);
   } catch {
     scheduleReconnect(gen);
     return;
@@ -266,6 +343,7 @@ function connect() {
     if (gen !== state.wsGen) return;
     state.retries = 0;
     setStatus("live");
+    console.log("WebSocket connected successfully to", wsUrl);
   };
   ws.onmessage = ev => {
     if (gen !== state.wsGen) return;
@@ -282,7 +360,10 @@ function connect() {
     applyMessage(msg);
   };
   ws.onclose = () => { if (gen === state.wsGen) scheduleReconnect(gen); };
-  ws.onerror = () => { try { ws.close(); } catch { /* déjà fermé */ } };
+  ws.onerror = (error) => { 
+    console.error('WebSocket error:', error);
+    try { ws.close(); } catch { /* déjà fermé */ } 
+  };
 }
 
 function closeSocket() {
