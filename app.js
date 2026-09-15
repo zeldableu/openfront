@@ -1995,7 +1995,7 @@ function signedScore(value) {
 window.getLobbiesAPI = function() {
   const games = [];
   for (const [id, game] of state.games) {
-    if (game.cat !== 'team') continue; // Que les parties team
+    // Retourner TOUTES les parties (team ET ffa)
     
     const remaining = game.startsAt ? game.startsAt - now() : 0;
     
@@ -2007,6 +2007,7 @@ window.getLobbiesAPI = function() {
       teams: game.teams,
       perTeam: game.perTeam,
       difficulty: game.difficulty,
+      category: game.cat,
       secondsRemaining: Math.round(remaining / 1000),
       startsAt: game.startsAt,
     });
@@ -2023,7 +2024,7 @@ window.getLobbiesAPI = function() {
     status: state.status,
     timestamp: Date.now(),
     gamesCount: state.games.size,
-    allTeamGames: games,
+    allGames: games,
   };
 };
 
