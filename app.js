@@ -1993,23 +1993,69 @@ function signedScore(value) {
 }
 
 function renderTeamStats(stats) {
-  // Podium top 5
-  renderWorldPodium(stats);
-  
-  // Stats du jour simplifiées
-  $("rankingSynced").textContent = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(stats.updatedAt);
-  
+  // Tableau GAL dans l'onglet Jouer
+  $("statsRank").textContent = stats.rank ? `#${stats.rank}` : "—";
+  $("statsRankLabel").textContent = stats.rank
+    ? `🏆 GAL est ${stats.rank}${stats.rank === 1 ? "er" : "e"} mondial !`
+    : "🏆 GAL au sommet";
+  $("statsRatio").textContent = Number.isFinite(stats.ratio)
+    ? stats.ratio.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "—";
+
   const scoreOrDash = (node, value) => {
     node.textContent = value === null ? "—" : signedScore(value);
     node.className = value === null ? "" : value > 0 ? "positive" : value < 0 ? "negative" : "";
   };
+  scoreOrDash($("statsTeamPoints"), stats.teamPoints);
   scoreOrDash($("statsDailyPoints"), stats.points);
 
   $("statsWins").textContent = stats.wins === null ? "—" : String(stats.wins);
   $("statsLosses").textContent = stats.losses === null ? "—" : String(stats.losses);
   $("statsGames").textContent = stats.games === null
-    ? "—"
-    : String(stats.games);
+    ? "— parties"
+    : `${stats.games} partie${stats.games === 1 ? "" : "s"}`;
+
+  const top = $("statsTop");
+  top.replaceChildren();
+  if (!stats.top.length) {
+    const item = el("li", "empty");
+    item.append(el("span", "dailyTopName", stats.hasClanHistory
+      ? "Aucune contribution aujourd'hui"
+      : "Historique du clan indisponible"));
+    top.append(item);
+  } else {
+    for (const player of stats.top) {
+      const item = el("li");
+      const name = el("span", "dailyTopName", player.name);
+      name.title = `${player.name} · ${player.wins} victoire${player.wins === 1 ? "" : "s"} / ${player.games} parties`;
+      const score = el("strong", `dailyTopPoints${player.points < 0 ? " negative" : ""}`, signedScore(player.points));
+      item.append(name, score);
+      top.append(item);
+    }
+  }
+
+  const worst = $("statsWorst");
+  worst.replaceChildren();
+  if (stats.worst) {
+    const name = el("span", "dailyWorstName", stats.worst.name);
+    name.title = `${stats.worst.name} · ${stats.worst.wins} victoire${stats.worst.wins === 1 ? "" : "s"} / ${stats.worst.games} parties`;
+    const score = el("strong", `dailyWorstPoints${stats.worst.points < 0 ? " negative" : ""}`, signedScore(stats.worst.points));
+    worst.append(name, score);
+  } else {
+    worst.textContent = stats.hasClanHistory
+      ? "Personne pour l'instant 🎉"
+      : "—";
+  }
+
+  $("statsUpdated").textContent = `🕒 ${new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit",
+  }).format(stats.updatedAt)}`;
+
+  // Podium top 5 dans l'onglet Classement
+  renderWorldPodium(stats);
+  
+  // Stats du jour dans l'onglet Classement
+  $("rankingSynced").textContent = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(stats.updatedAt);
 
   // Anciens éléments pour compatibilité
   const totals = $("officialTeamTotals");
