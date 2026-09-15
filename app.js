@@ -2864,7 +2864,7 @@ function initSiteShell() {
   $("headerConnection").append($("loginBox"));
   $("headerSession").append($("logoutBtn"));
   $("profileSlot").append($("profileCard"));
-  $("rankingOverview").append($("teamStats"));
+  // Garder teamStats dans playView (à gauche des maps)
   $("leftRail").remove();
   $("navPlay").onclick = () => showView("play");
   $("navProfile").onclick = $("headerIdentity").onclick = () => showView("profile");
