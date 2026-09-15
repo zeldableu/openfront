@@ -2018,8 +2018,8 @@ window.getLobbiesAPI = function() {
     // Exclure les parties pleines
     if (game.capacity > 0 && game.players >= game.capacity) continue;
     
-    // Exclure les parties avec 3+ joueurs
-    if (game.players >= 3) continue;
+    // Exclure les parties avec trop de joueurs (capacity - 3 ou moins de slots libres)
+    if (game.capacity > 0 && game.players >= game.capacity - 3) continue;
     
     const remaining = game.startsAt - now_ms;
     
