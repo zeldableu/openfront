@@ -1991,45 +1991,6 @@ function signedScore(value) {
   return `${amount > 0 ? "+" : amount < 0 ? "−" : ""}${number}`;
 }
 
-/* Polling REST pour les lobbies (évite les problèmes WebSocket sur GitHub Pages) */
-async function pollLobbiesREST() {
-  try {
-    const response = await fetch('https://api.openfront.io/lobbies', {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    if (!response.ok) throw new Error(response.status);
-    
-    const data = await response.json();
-    if (!data.lobbies) return;
-    
-    // Remplacer state.games avec les données REST
-    state.games.clear();
-    if (typeof state.clockOffset !== 'number') state.clockOffset = 0;
-    
-    for (const raw of data.lobbies || []) {
-      if (!raw || !raw.gameID) continue;
-      const normalized = normalize(raw);
-      state.games.set(raw.gameID, normalized);
-    }
-    
-    const withPlayers = Array.from(state.games.values()).filter(g => g.players > 0).length;
-    console.log(`[REST-POLLING] ${state.games.size} lobbies, ${withPlayers} peuplés`);
-    
-    if (state.games.size > 0) {
-      setStatus('live');
-    }
-    scheduleRender();
-  } catch (error) {
-    console.error('[REST-POLLING] Erreur:', error);
-    setStatus('off');
-  }
-}
-
-// Lancer le polling toutes les 2 secondes
-setInterval(pollLobbiesREST, 2000);
-// Première requête immédiate
-pollLobbiesREST();
-
 /* API JSON pour le bot */
 window.getLobbiesAPI = function() {
   const games = [];
@@ -3101,7 +3062,7 @@ function init() {
     if (state.presenceWs) state.presenceWs.close(1000, "page fermée");
   });
 
-  // connect(); // Désactivé : utilise le polling REST à la place
+  connect();
   setInterval(scheduleRender, 1000);   // rafraîchit les comptes à rebours
 }
 
