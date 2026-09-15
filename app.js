@@ -431,11 +431,13 @@ function orderedGames() {
     return g.players < g.capacity; // Cacher si full
   });
 
-  // Filtrer les parties avec moins de 10% de capacité (trop vides)
+  // Afficher seulement les parties avec timer lancé (pas en attente)
+  list = list.filter(g => g.startsAt > 0);
+
+  // Cacher les parties déjà en cours (timer expiré)
   list = list.filter(g => {
-    if (g.capacity === 0) return g.players > 0; // Si pas de capacité, au moins 1 joueur
-    const fillRate = g.players / g.capacity;
-    return fillRate >= 0.1; // Au moins 10% de remplissage
+    const remaining = g.startsAt - now();
+    return remaining > 0; // Timer pas encore expiré
   });
 
   if (conf.hideEmpty) list = list.filter(g => g.players > 0);
