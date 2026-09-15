@@ -2868,7 +2868,15 @@ function renderContributors() {
     button.type = "button";
     button.onclick = () => openPlayerDetails(player.id);
     const stats = window.OpenFrontTeamHistory.analyze(player.matches || []);
-    return [rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : rank, button, pointLabel(player.points), pointLabel(stats.gains), pointLabel(stats.deductions), player.games, player.wins, player.losses,
+    
+    // Flouter les points de Coton
+    const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+    const isHidden = hiddenPlayers.has(player.name);
+    const pointsDisplay = isHidden ? "?" : pointLabel(player.points);
+    const gainsDisplay = isHidden ? "?" : pointLabel(stats.gains);
+    const lossesDisplay = isHidden ? "?" : pointLabel(stats.deductions);
+    
+    return [rank <= 3 ? ["🥇", "🥈", "🥉"][rank - 1] : rank, button, pointsDisplay, gainsDisplay, lossesDisplay, player.games, player.wins, player.losses,
       `${Math.round(player.wins / player.games * 100)} %`, signedScore(player.points / player.games), totalGames ? `${Math.round(player.games / totalGames * 100)} %` : "—", stats.timed ? formatDuration(stats.seconds) : "—", `${stats.winStreak} / ${stats.lossStreak}`];
   });
   host.replaceChildren(rows.length ? dataTable(["#", "Gaulois", "Net estimé", "Gains estimés", "Pertes estimées", "Parties", "V", "D", "Winrate", "Pts / partie", "Présence team", "Temps joué*", "Séries V / D"], rows, "Contributions estimées des joueurs GAL") : el("p", "muted", history.archiveMissing ? "La source qui identifie les joueurs est indisponible." : "Aucun joueur identifié pour ce filtre. Les contributions nécessitent un score officiel et les participants de la partie."));
@@ -2891,7 +2899,18 @@ function exportRanking() {
   const games = state.historySelectedDay ? state.history.days.find(day => day.day === state.historySelectedDay)?.games : state.history.games;
   players.forEach(({ player: p, rank }) => {
     const stats = window.OpenFrontTeamHistory.analyze(p.matches || []);
-    rows.push([state.historySelectedDay || `${state.history.start}/${state.history.end}`, rank, p.name, p.points, stats.gains, stats.deductions, p.games, p.wins, p.losses, p.wins / p.games * 100, p.points / p.games, games ? p.games / games * 100 : 0, stats.seconds, stats.winStreak, stats.lossStreak]);
+    
+    // Flouter les points de Coton dans l'export
+    const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+    const isHidden = hiddenPlayers.has(p.name);
+    
+    rows.push([state.historySelectedDay || `${state.history.start}/${state.history.end}`, rank, p.name, 
+      isHidden ? "?" : p.points, 
+      isHidden ? "?" : stats.gains, 
+      isHidden ? "?" : stats.deductions, 
+      p.games, p.wins, p.losses, p.wins / p.games * 100, 
+      isHidden ? "?" : p.points / p.games, 
+      games ? p.games / games * 100 : 0, stats.seconds, stats.winStreak, stats.lossStreak]);
   });
   const url = URL.createObjectURL(new Blob(["\uFEFF" + rows.map(row => row.map(escape).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
   const link = el("a"); link.href = url; link.download = `GAL-${state.historySelectedDay || state.history.start + "-" + state.history.end}.csv`; link.click();
@@ -2905,25 +2924,34 @@ function playerTeamContent(periodPlayer) {
   const teamGames = selected ? state.history.days.find(day => day.day === state.historySelectedDay).games : state.history.games;
   const content = el("div");
   const metrics = el("div", "statsGrid");
-  metrics.append(statCell("⭐ Contribution estimée", signedScore(player.points)), statCell("🎯 Parties avec GAL", player.games), statCell("🏆 Victoires", player.wins), statCell("💀 Défaites", player.losses), statCell("⚖️ Winrate avec GAL", `${Math.round(player.wins / player.games * 100)} %`), statCell("🚀 Points / partie", signedScore(player.points / player.games)));
+  
+  // Flouter les points de Coton
+  const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+  const isHidden = hiddenPlayers.has(player.name);
+  const pointsDisplay = isHidden ? "?" : signedScore(player.points);
+  const pointsPerGameDisplay = isHidden ? "?" : signedScore(player.points / player.games);
+  
+  metrics.append(statCell("⭐ Contribution estimée", pointsDisplay), statCell("🎯 Parties avec GAL", player.games), statCell("🏆 Victoires", player.wins), statCell("💀 Défaites", player.losses), statCell("⚖️ Winrate avec GAL", `${Math.round(player.wins / player.games * 100)} %`), statCell("🚀 Points / partie", pointsPerGameDisplay));
   const rank = population.findIndex(row => row.id === player.id) + 1;
   metrics.append(statCell(selected ? "🏅 Rang estimé du jour" : "🏅 Rang estimé sur la période", `${rank} / ${population.length}`), statCell("🛡️ Présence dans les parties GAL", teamGames ? `${Math.round(player.games / teamGames * 100)} %` : "—"));
   if (periodPlayer.daily?.length) {
     const byScore = [...periodPlayer.daily].sort((a, b) => b.points - a.points);
-    metrics.append(statCell("🔥 Meilleur jour joué", `${prettyDay(byScore[0].day)} · ${signedScore(byScore[0].points)}`, "wide"), statCell("🧊 Pire jour joué", `${prettyDay(byScore.at(-1).day)} · ${signedScore(byScore.at(-1).points)}`, "wide"));
+    const bestPoints = isHidden ? "?" : signedScore(byScore[0].points);
+    const worstPoints = isHidden ? "?" : signedScore(byScore.at(-1).points);
+    metrics.append(statCell("🔥 Meilleur jour joué", `${prettyDay(byScore[0].day)} · ${bestPoints}`, "wide"), statCell("🧊 Pire jour joué", `${prettyDay(byScore.at(-1).day)} · ${worstPoints}`, "wide"));
   }
   content.append(el("p", "muted", `${selected ? `Journée : ${prettyDay(state.historySelectedDay)}` : `Période : ${prettyDay(state.history.start)} → ${prettyDay(state.history.end)}`}. Statistiques sur les parties classées identifiées, pas sur toute la carrière.`), metrics);
   const days = [...(periodPlayer.daily || [])].reverse();
-  if (selected) content.append(el("p", "muted", `Cumul sur la période : ${signedScore(periodPlayer.points)} points estimés · ${periodPlayer.games} parties · ${periodPlayer.wins} V / ${periodPlayer.losses} D.`));
-  if (days.length) content.append(el("h3", null, "📅 Contribution jour par jour"), dataTable(["Jour", "Points estimés", "Parties", "V / D"], days.map(day => [prettyDay(day.day), pointLabel(day.points), day.games, `${day.wins} / ${day.losses}`]), "Contributions quotidiennes du joueur"));
+  if (selected) content.append(el("p", "muted", `Cumul sur la période : ${isHidden ? "?" : signedScore(periodPlayer.points)} points estimés · ${periodPlayer.games} parties · ${periodPlayer.wins} V / ${periodPlayer.losses} D.`));
+  if (days.length) content.append(el("h3", null, "📅 Contribution jour par jour"), dataTable(["Jour", "Points estimés", "Parties", "V / D"], days.map(day => [prettyDay(day.day), isHidden ? "?" : pointLabel(day.points), day.games, `${day.wins} / ${day.losses}`]), "Contributions quotidiennes du joueur"));
   content.append(el("p", "muted", "Les points individuels sont une répartition estimée du score GAL. Les parties sans participants identifiables ne sont pas attribuées."));
   const focus = selected || player;
   const stats = window.OpenFrontTeamHistory.analyze(focus.matches || []);
   content.append(el("h3", null, state.historySelectedDay && selected ? `Détail du ${prettyDay(state.historySelectedDay)}` : "Détail de la période"));
   const detail = el("div", "statsGrid");
-  detail.append(statCell("Points nets estimés", signedScore(focus.points)), statCell("Gains / pertes estimés", `${signedScore(stats.gains)} / ${signedScore(stats.deductions)}`),
+  detail.append(statCell("Points nets estimés", isHidden ? "?" : signedScore(focus.points)), statCell("Gains / pertes estimés", isHidden ? "?" : `${signedScore(stats.gains)} / ${signedScore(stats.deductions)}`),
     statCell("Temps de match cumulé", stats.timed ? formatDuration(stats.seconds) : "—"), statCell("Séries maximales V / D", `${stats.winStreak} / ${stats.lossStreak}`));
-  content.append(detail, dataTable(["Carte", "Parties", "V / D", "Points estimés"], stats.maps.map(row => [row.name, row.games, `${row.wins} / ${row.losses}`, pointLabel(row.points)]), "Statistiques GAL du joueur par carte"));
+  content.append(detail, dataTable(["Carte", "Parties", "V / D", "Points estimés"], stats.maps.map(row => [row.name, row.games, `${row.wins} / ${row.losses}`, isHidden ? "?" : pointLabel(row.points)]), "Statistiques GAL du joueur par carte"));
   return content;
 }
 
