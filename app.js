@@ -1963,6 +1963,16 @@ async function calculateTeamStats() {
   const teamPoints = leaderboard && clanIndex >= 0
     ? (Number(clan.weightedWins) || 0) - (Number(clan.weightedLosses) || 0)
     : null;
+  
+  // Debug: afficher les valeurs dans la console
+  if (clanIndex >= 0) {
+    console.log('[GAL DEBUG] Clan data:', {
+      weightedWins: clan.weightedWins,
+      weightedLosses: clan.weightedLosses,
+      teamPoints: teamPoints,
+      fullClan: clan
+    });
+  }
 
   return {
     rank: clanIndex >= 0 ? clanIndex + 1 : 0,
