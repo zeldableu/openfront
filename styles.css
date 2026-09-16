@@ -1461,8 +1461,8 @@ main {
 
 .cardPoints {
   position: absolute;
-  bottom: 50px;
-  left: 10px;
+  bottom: 18px;
+  left: 90px;
   z-index: 5;
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, #ffd700 55%, transparent);
