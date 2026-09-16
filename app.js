@@ -3145,14 +3145,7 @@ function init() {
   }
 
   initWinsSlider();
-  for (const col of COLUMNS) {
-    for (const [suffix, step] of [["Prev", -1], ["Next", 1]]) {
-      $(col.cards + suffix).onclick = () => {
-        state.mapPages[col.cat] += step;
-        render();
-      };
-    }
-  }
+  // Pagination buttons removed - using 3-column layout without pagination
   if (typeof ResizeObserver !== "undefined") {
     const layoutObserver = new ResizeObserver(scheduleRender);
     layoutObserver.observe($("board"));
