@@ -1078,7 +1078,14 @@ main {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
+  overflow: hidden;
+  /* Force masquer les scrollbars sur tous les navigateurs */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.colCards::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 /* ---------------- Carte ---------------- */

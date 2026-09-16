@@ -362,6 +362,7 @@ function connectToWorker(workerId, gen, host = 'openfront.io') {
       msg = typeof ev.data === "string"
         ? JSON.parse(ev.data)
         : window.OpenFrontLobbyWire.decodeLobbyMessage(ev.data);
+      console.log(`[WORKER-${workerId}@${host}] Message decoded, keys:`, Object.keys(msg).slice(0, 5), "has 'games':", !!msg.games, "has 'counts':", !!msg.counts);
     } catch (error) {
       console.error(`[WORKER-${workerId}@${host}] Trame illisible:`, error);
       return;
@@ -420,8 +421,10 @@ function applyMessage(msg, workerId = null, host = null) {
   }
 
   const workerTag = workerId !== null ? `[WORKER-${workerId}@${host}]` : '[MSG]';
+  let shouldRender = false;
 
   if (msg.type === "counts" && msg.counts) {
+    // Update player counts only
     let totalPlayers = 0;
     for (const [id, n] of Object.entries(msg.counts)) {
       const playerCount = Number(n) || 0;
@@ -429,9 +432,12 @@ function applyMessage(msg, workerId = null, host = null) {
       const g = state.games.get(id);
       if (g) g.players = playerCount;
     }
-    //console.log(`${workerTag} Counts: ${Object.keys(msg.counts).length} lobbies, ${totalPlayers} joueurs`);
-  } else if (msg.games) {
+    shouldRender = true;
+  } else if (msg.type === "full" && msg.games) {
+    // Full snapshot: merge all lobbies from all workers
+    const oldSize = state.games.size;
     let totalGames = 0;
+    
     for (const [category, list] of Object.entries(msg.games)) {
       if (!Array.isArray(list)) continue;
       for (const raw of list) {
@@ -441,14 +447,19 @@ function applyMessage(msg, workerId = null, host = null) {
         totalGames++;
       }
     }
-    console.log(`${workerTag} Snapshot: ${totalGames} lobbies`);
+    
+    state.order = [];
+    state.orderSig = "";
+    
+    console.log(`${workerTag} Snapshot: ${totalGames} from worker, total now: ${state.games.size} (was: ${oldSize})`);
     const withPlayers = Array.from(state.games.values()).filter(g => g.players > 0).length;
-    console.log(`Total agrégé: ${state.games.size} lobbies, ${withPlayers} peuplés`);
-  } else {
-    return;
+    console.log(`Total aggregated: ${state.games.size} lobbies, ${withPlayers} with players`);
+    shouldRender = true;
   }
 
-  scheduleRender();
+  if (shouldRender) {
+    scheduleRender();
+  }
 }
 
 /* ---------------- Sélection & ordre ---------------- */
@@ -461,19 +472,33 @@ function orderedGames() {
   const sig = [...state.games.keys()].sort().join(",");
 
   const games = [...state.games.values()];
+  console.log("[DEBUG orderedGames] games.length:", games.length, "conf:", conf);
+  
   const prioritized = conf.sort === "playersDesc"
     ? window.OpenFrontLobbyLayout.prioritize(games, state.order)
     : games.sort(SORTS[conf.sort] || SORTS.playersDesc);
+  
+  console.log("[DEBUG orderedGames] prioritized.length:", prioritized?.length);
+  
   state.order = prioritized.map(game => game.id);
   state.orderSig = sig;
 
   let list = state.order.map(id => state.games.get(id)).filter(Boolean);
+  console.log("[DEBUG orderedGames] final list.length:", list.length);
 
-  // Filtrer les parties pleines (full)
+  // Filtrer les lobbies avec countdown ou déjà commencées ou pleines
+  // Sur OpenFront: dès qu'une lobby a assez de joueurs, elle lance un countdown
+  // et disparaît de la liste publique (plus rejoignable)
+  const beforeFilter = list.length;
   list = list.filter(g => {
-    if (g.capacity === 0) return true; // Pas de limite définie
-    return g.players < g.capacity; // Cacher si full
+    // Si startsAt existe (countdown lancé ou partie commencée) → cacher
+    if (g.startsAt && g.startsAt > 0) return false;
+    // Si la lobby est pleine (joueurs >= capacité ou capacity=0 et pleine) → cacher
+    if (g.capacity > 0 && g.players >= g.capacity) return false;
+    if (g.capacity === 0 && g.players >= 45) return false; // Pas de limite = max 45 joueurs
+    return true;
   });
+  console.log(`[DEBUG orderedGames] after countdown/full filter: ${beforeFilter} → ${list.length}`);
 
   // IMPORTANT: Ne pas filtrer par startsAt - afficher TOUTES les lobbies (en attente ET en cours)
   // OpenFront affiche les lobbies qui attendent des joueurs et celles avec countdown
@@ -509,7 +534,14 @@ function modeLabel(g) {
 function scheduleRender() {
   if (state.renderQueued) return;
   state.renderQueued = true;
-  setTimeout(() => { state.renderQueued = false; render(); }, 120);
+  setTimeout(() => { 
+    try {
+      render();
+    } catch (err) {
+      console.error("[ERROR render crashed]", err);
+    }
+    state.renderQueued = false;
+  }, 120);
 }
 
 function stopCardMove(node) {
@@ -565,6 +597,7 @@ function animateCardReflow(positions) {
 }
 
 function render() {
+  console.log("[DEBUG render] called, view:", state.view, "hidden:", document.hidden);
   // Onglet caché : on saute la mise à jour du DOM, on la rejouera au retour.
   if (document.hidden) { state.domStale = true; return; }
   if (state.view !== "play") { state.domStale = true; return; }
