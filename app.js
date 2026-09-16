@@ -442,10 +442,23 @@ function applyMessage(msg, workerId = null, host = null) {
     // VIDER d'abord pour ne pas accumuler les lobbies mortes
     state.games.clear();
     
+    // LOG: Afficher UNE lobby complète pour voir toutes les données disponibles
+    let firstLobby = null;
+    
     for (const [category, list] of Object.entries(msg.games)) {
       if (!Array.isArray(list)) continue;
       for (const raw of list) {
         if (!raw || !raw.gameID) continue;
+        
+        // Capturer la première lobby pour inspection
+        if (!firstLobby && raw.numClients > 0) {
+          firstLobby = raw;
+          console.log(`[LOBBY-INSPECT] Full lobby data:`, JSON.stringify(raw, null, 2));
+          console.log(`[LOBBY-INSPECT] Available keys:`, Object.keys(raw));
+          if (raw.players) console.log(`[LOBBY-INSPECT] Has players array:`, raw.players);
+          if (raw.clients) console.log(`[LOBBY-INSPECT] Has clients array:`, raw.clients);
+        }
+        
         const normalized = normalize(raw);
         state.games.set(raw.gameID, normalized);
         totalGames++;
