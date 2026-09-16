@@ -1459,6 +1459,20 @@ main {
 .time.soon { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 .time.idle { color: var(--ink-3); border-color: color-mix(in srgb, var(--ink-3) 35%, transparent); }
 
+.cardPoints {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, #ffd700 55%, transparent);
+  border-radius: 6px;
+  background: rgba(50, 40, 0, .9);
+  font-size: 11px;
+  font-weight: 750;
+  color: #ffd700;
+  font-variant-numeric: tabular-nums;
+}
 
 .empty {
   display: flex;

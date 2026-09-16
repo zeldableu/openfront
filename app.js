@@ -205,10 +205,25 @@ function normalize(raw) {
   const capacity = Number(cfg.maxPlayers) || 0;
   const shape = teamShape(cfg.playerTeams, capacity);
   const mods = modsOf(cfg);
+  const players = Number(raw.numClients) || 0;
+  
+  // Calculer les points potentiels si victoire
+  let potentialPoints = 0;
+  if (players > 1) {
+    if (shape.teams > 0) {
+      // TEAM MODE: points basés sur la difficulté (nombre d'équipes)
+      const difficulty = Math.max(1, Math.sqrt(shape.teams - 1));
+      potentialPoints = Math.round(difficulty);
+    } else {
+      // FFA MODE: 1 point par joueur battu
+      potentialPoints = players - 1;
+    }
+  }
+  
   return {
     id: raw.gameID,
     cat: raw.publicGameType || "ffa",
-    players: Number(raw.numClients) || 0,
+    players,
     capacity,
     map: cfg.gameMap || "?",
     slug: mapSlug(cfg.gameMap),
@@ -217,9 +232,8 @@ function normalize(raw) {
     teams: shape.teams,
     perTeam: shape.perTeam,
     hvn: shape.hvn,
-    // Absent tant que le lobby est vide : le serveur ne lance le décompte
-    // qu'à partir du premier joueur connecté.
     startsAt: Number(raw.startsAt) || 0,
+    potentialPoints, // 🆕 Points si victoire
     badges: [
       ...[...mods].filter(k => !DULL_MODS.has(k)).map(k => MOD_LABEL.get(k) || k),
       ...extrasOf(cfg),
@@ -799,6 +813,7 @@ function buildCard(g) {
   details.append(el("div", "cardMode"), goal);
   text.append(heading, details);
   image.append(el("div", "badges"));
+  image.append(el("span", "cardPoints")); // 🆕 Badge de points
 
   image.append(el("span", "players"), el("span", "time"));
 
@@ -835,6 +850,18 @@ function updateCard(card, g) {
   card.querySelector(".cardMode").textContent =
     `${modeLabel(g)} · ${g.difficulty} · ${g.bots} bots`;
   card.querySelector(".cardMode").title = card.querySelector(".cardMode").textContent;
+  
+  // Afficher les points potentiels si victoire
+  const pointsEl = card.querySelector(".cardPoints");
+  if (pointsEl) {
+    if (g.potentialPoints > 0) {
+      pointsEl.textContent = `🏆 +${g.potentialPoints}`;
+      pointsEl.title = `${g.potentialPoints} point${g.potentialPoints > 1 ? 's' : ''} si victoire`;
+      pointsEl.style.display = "";
+    } else {
+      pointsEl.style.display = "none";
+    }
+  }
 
   renderCardRally(card.querySelector(".cardRally"), g.id, rallyMembers);
 
