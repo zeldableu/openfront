@@ -12,7 +12,11 @@
 const JOIN_URL  = id => `https://openfront.io/game/${encodeURIComponent(id)}`;
 const THUMB_URL = slug => `assets/maps/${encodeURIComponent(slug)}.webp`;
 
-const COLUMNS = []; // Obsolète - remplacé par grille unique
+const COLUMNS = [
+  { cat: "ffa",     cards: "colFfa",     count: "countFfa" },
+  { cat: "team",    cards: "colTeam",    count: "countTeam" },
+  { cat: "special", cards: "colSpecial", count: "countSpecial" },
+];
 
 
 /* Libellés des modificateurs connus. Ceux que le serveur ajoutera plus tard
@@ -85,6 +89,7 @@ const state = {
   renderQueued: false,
   domStale: false,
   cardEls: new Map(),
+  mapPages: { ffa: 0, team: 0, special: 0 },
   view: "play",
   history: null,
   historySelectedDay: "",
@@ -527,8 +532,16 @@ function render() {
   state.domStale = false;
 
   const list = orderedGames();
-  // Trier par timestamp décroissant (plus récentes en haut)
-  list.sort((a, b) => b.startsAt - a.startsAt);
+  const buckets = { ffa: [], team: [], special: [] };
+  for (const g of list) {
+    const category = g.cat || "special";
+    (buckets[category] || buckets.special).push(g);
+  }
+
+  // Trier chaque catégorie par timestamp décroissant (plus récentes en haut)
+  for (const cat of ["ffa", "team", "special"]) {
+    buckets[cat].sort((a, b) => b.startsAt - a.startsAt);
+  }
 
   const live = new Set(list.map(g => g.id));
   const previousPositions = snapshotCardPositions(live);
@@ -564,32 +577,43 @@ function render() {
     }
   }
 
-  // Nouvelle grille unique au lieu de 3 colonnes
-  const host = $("cardGrid");
-  const desiredNodes = [];
-  for (const g of list) {
-    let node = state.cardEls.get(g.id);
-    if (!node) { node = buildCard(g); state.cardEls.set(g.id, node); }
-    updateCard(node, g);
-    node.hidden = false;
-    desiredNodes.push(node);
-  }
+  // 3 colonnes par catégorie
+  const COLUMNS = [
+    { cat: "ffa",     cards: "colFfa",     count: "countFfa" },
+    { cat: "team",    cards: "colTeam",    count: "countTeam" },
+    { cat: "special", cards: "colSpecial", count: "countSpecial" },
+  ];
 
-  // Mettre à jour l'ordre des cartes si nécessaire
-  const currentNodes = [...host.children]
-    .filter(node => !node.classList.contains("leaving"));
-  const orderChanged = currentNodes.length !== desiredNodes.length ||
-    desiredNodes.some((node, i) => currentNodes[i] !== node);
-  if (orderChanged) {
-    const fragment = document.createDocumentFragment();
-    for (const node of desiredNodes) fragment.append(node);
-    host.append(fragment);
+  for (const col of COLUMNS) {
+    const games = buckets[col.cat];
+    $(col.count).textContent = games.length;
+    const host = $(col.cards);
+    
+    const desiredNodes = [];
+    for (const g of games) {
+      let node = state.cardEls.get(g.id);
+      if (!node) { node = buildCard(g); state.cardEls.set(g.id, node); }
+      updateCard(node, g);
+      node.hidden = false;
+      desiredNodes.push(node);
+    }
+
+    // Mettre à jour l'ordre des cartes si nécessaire
+    const currentNodes = [...host.children]
+      .filter(node => !node.classList.contains("leaving"));
+    const orderChanged = currentNodes.length !== desiredNodes.length ||
+      desiredNodes.some((node, i) => currentNodes[i] !== node);
+    if (orderChanged) {
+      const fragment = document.createDocumentFragment();
+      for (const node of desiredNodes) fragment.append(node);
+      host.append(fragment);
+    }
   }
 
   animateCardReflow(previousPositions);
 
   $("emptyState").hidden = list.length > 0 || state.status === "connecting";
-  $("cardGrid").hidden = list.length === 0 && state.status !== "connecting";
+  $("board").hidden = list.length === 0 && state.status !== "connecting";
 }
 
 function buildCard(g) {
