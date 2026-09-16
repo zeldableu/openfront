@@ -2055,8 +2055,8 @@ async function calculateTeamStats() {
   const ranking = [...contributors.values()]
     .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name, "fr"));
   
-  // Masquer les points de Coton (privacy)
-  const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+  // Masquer les points (privacy) - actuellement aucun joueur masqué
+  const hiddenPlayers = new Set([]);
   for (const player of ranking) {
     if (hiddenPlayers.has(player.name)) {
       player.points = null; // Masquer les points
@@ -2984,8 +2984,8 @@ function renderContributors() {
     button.onclick = () => openPlayerDetails(player.id);
     const stats = window.OpenFrontTeamHistory.analyze(player.matches || []);
     
-    // Flouter les points de Coton
-    const hiddenPlayers = new Set(["coton", "Coton", "COTON"]);
+    // Flouter les points (privacy) - actuellement aucun joueur masqué
+    const hiddenPlayers = new Set([]);
     const isHidden = hiddenPlayers.has(player.name);
     const pointsDisplay = isHidden ? "?" : pointLabel(player.points);
     const gainsDisplay = isHidden ? "?" : pointLabel(stats.gains);
