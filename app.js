@@ -434,9 +434,13 @@ function applyMessage(msg, workerId = null, host = null) {
     }
     shouldRender = true;
   } else if (msg.type === "full" && msg.games) {
-    // Full snapshot: merge all lobbies from all workers
+    // Full snapshot: REMPLACE toutes les lobbies (ne pas accumuler)
+    // Sur OpenFront: chaque snapshot est la liste ACTUELLE, pas une fusion
     const oldSize = state.games.size;
     let totalGames = 0;
+    
+    // VIDER d'abord pour ne pas accumuler les lobbies mortes
+    state.games.clear();
     
     for (const [category, list] of Object.entries(msg.games)) {
       if (!Array.isArray(list)) continue;
@@ -451,9 +455,9 @@ function applyMessage(msg, workerId = null, host = null) {
     state.order = [];
     state.orderSig = "";
     
-    console.log(`${workerTag} Snapshot: ${totalGames} from worker, total now: ${state.games.size} (was: ${oldSize})`);
+    console.log(`${workerTag} Snapshot: ${totalGames} lobbies (was: ${oldSize})`);
     const withPlayers = Array.from(state.games.values()).filter(g => g.players > 0).length;
-    console.log(`Total aggregated: ${state.games.size} lobbies, ${withPlayers} with players`);
+    console.log(`Total: ${state.games.size} lobbies, ${withPlayers} with players`);
     shouldRender = true;
   }
 
