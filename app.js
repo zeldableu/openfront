@@ -855,8 +855,20 @@ function updateCard(card, g) {
   const pointsEl = card.querySelector(".cardPoints");
   if (pointsEl) {
     if (g.potentialPoints > 0) {
-      pointsEl.textContent = `🏆 +${g.potentialPoints}`;
-      pointsEl.title = `${g.potentialPoints} point${g.potentialPoints > 1 ? 's' : ''} si victoire`;
+      // Pour les TEAMS: calculer avec le nombre de GAL dans la partie
+      let displayPoints = g.potentialPoints;
+      if (g.teams > 0 && rallyMembers.length > 0) {
+        const avgTeamSize = g.players / g.teams;
+        const galInGame = rallyMembers.length;
+        const difficulty = Math.max(1, Math.sqrt(g.teams - 1));
+        displayPoints = Math.round((galInGame / avgTeamSize) * difficulty * 10) / 10; // Arrondi à 0.1
+      }
+      
+      pointsEl.textContent = `🏆 +${displayPoints}`;
+      const suffix = g.teams > 0 && rallyMembers.length > 0 
+        ? ` (${rallyMembers.length} GAL)` 
+        : '';
+      pointsEl.title = `${displayPoints} point${displayPoints > 1 ? 's' : ''} si victoire${suffix}`;
       pointsEl.style.display = "";
     } else {
       pointsEl.style.display = "none";
