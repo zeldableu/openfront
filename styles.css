@@ -1078,7 +1078,8 @@ main {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: hidden;
+  overflow-y: auto; /* Permet le scroll vertical */
+  overflow-x: hidden; /* Pas de scroll horizontal */
   /* Force masquer les scrollbars sur tous les navigateurs */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
