@@ -208,16 +208,12 @@ function normalize(raw) {
   const players = Number(raw.numClients) || 0;
   
   // Calculer les points potentiels si victoire
+  // SEULEMENT pour les TEAMS (pas FFA)
   let potentialPoints = 0;
-  if (players > 1) {
-    if (shape.teams > 0) {
-      // TEAM MODE: points basés sur la difficulté (nombre d'équipes)
-      const difficulty = Math.max(1, Math.sqrt(shape.teams - 1));
-      potentialPoints = Math.round(difficulty);
-    } else {
-      // FFA MODE: 1 point par joueur battu
-      potentialPoints = players - 1;
-    }
+  if (players > 1 && shape.teams > 0) {
+    // MODE TEAM: points basés sur la difficulté (nombre d'équipes)
+    const difficulty = Math.max(1, Math.sqrt(shape.teams - 1));
+    potentialPoints = Math.round(difficulty * 10) / 10; // 1 joueur seul
   }
   
   return {
@@ -233,7 +229,7 @@ function normalize(raw) {
     perTeam: shape.perTeam,
     hvn: shape.hvn,
     startsAt: Number(raw.startsAt) || 0,
-    potentialPoints, // 🆕 Points si victoire
+    potentialPoints, // 🆕 Points si victoire (TEAMS seulement)
     badges: [
       ...[...mods].filter(k => !DULL_MODS.has(k)).map(k => MOD_LABEL.get(k) || k),
       ...extrasOf(cfg),
