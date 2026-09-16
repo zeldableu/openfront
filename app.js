@@ -583,9 +583,25 @@ function render() {
     (buckets[category] || buckets.special).push(g);
   }
 
-  // Trier chaque catégorie par timestamp décroissant (plus récentes en haut)
+  // Tri dans chaque catégorie : 
+  // 1. Les lobbies avec countdown (startsAt défini et > 0) = countdown soonest first
+  // 2. Les lobbies en attente (startsAt undefined ou <= 0) = order server sent
   for (const cat of ["ffa", "team", "special"]) {
-    buckets[cat].sort((a, b) => b.startsAt - a.startsAt);
+    buckets[cat].sort((a, b) => {
+      const aHasCountdown = a.startsAt && a.startsAt > now();
+      const bHasCountdown = b.startsAt && b.startsAt > now();
+      
+      // Les deux ont un countdown : tri par soonest first
+      if (aHasCountdown && bHasCountdown) {
+        return a.startsAt - b.startsAt;
+      }
+      // Seulement a a un countdown : a avant b
+      if (aHasCountdown) return -1;
+      // Seulement b a un countdown : b avant a
+      if (bHasCountdown) return 1;
+      // Ni l'un ni l'autre : garder l'ordre du serveur (stable sort)
+      return 0;
+    });
   }
 
   const live = new Set(list.map(g => g.id));
@@ -645,7 +661,7 @@ function render() {
 
     // Mettre à jour l'ordre des cartes si nécessaire
     const currentNodes = [...host.children]
-      .filter(node => !node.classList.contains("leaving"));
+      .filter(node => !node.classList.contains("leaving") && !node.classList.contains("spawning"));
     const orderChanged = currentNodes.length !== desiredNodes.length ||
       desiredNodes.some((node, i) => currentNodes[i] !== node);
     if (orderChanged) {
