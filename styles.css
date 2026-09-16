@@ -1461,7 +1461,7 @@ main {
 
 .cardPoints {
   position: absolute;
-  top: 10px;
+  bottom: 16px;
   left: 10px;
   z-index: 4;
   padding: 3px 8px;
