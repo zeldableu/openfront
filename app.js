@@ -486,19 +486,16 @@ function orderedGames() {
   let list = state.order.map(id => state.games.get(id)).filter(Boolean);
   console.log("[DEBUG orderedGames] final list.length:", list.length);
 
-  // Filtrer les lobbies avec countdown ou déjà commencées ou pleines
-  // Sur OpenFront: dès qu'une lobby a assez de joueurs, elle lance un countdown
-  // et disparaît de la liste publique (plus rejoignable)
+  // Filtrer les lobbies DÉJÀ COMMENCÉES (pas celles avec countdown)
+  // Sur OpenFront: les lobbies avec countdown RESTENT visibles
+  // Elles disparaissent seulement quand startsAt <= maintenant (partie lancée)
   const beforeFilter = list.length;
   list = list.filter(g => {
-    // Si startsAt existe (countdown lancé ou partie commencée) → cacher
-    if (g.startsAt && g.startsAt > 0) return false;
-    // Si la lobby est pleine (joueurs >= capacité ou capacity=0 et pleine) → cacher
-    if (g.capacity > 0 && g.players >= g.capacity) return false;
-    if (g.capacity === 0 && g.players >= 45) return false; // Pas de limite = max 45 joueurs
+    // Si la partie a DÉJÀ COMMENCÉ (startsAt dans le passé) → cacher
+    if (g.startsAt && g.startsAt <= now()) return false;
     return true;
   });
-  console.log(`[DEBUG orderedGames] after countdown/full filter: ${beforeFilter} → ${list.length}`);
+  console.log(`[DEBUG orderedGames] after started filter: ${beforeFilter} → ${list.length}`);
 
   // IMPORTANT: Ne pas filtrer par startsAt - afficher TOUTES les lobbies (en attente ET en cours)
   // OpenFront affiche les lobbies qui attendent des joueurs et celles avec countdown
