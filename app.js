@@ -475,14 +475,8 @@ function orderedGames() {
     return g.players < g.capacity; // Cacher si full
   });
 
-  // Afficher seulement les parties avec timer lancé (pas en attente)
-  list = list.filter(g => g.startsAt > 0);
-
-  // Cacher les parties déjà en cours (timer expiré)
-  list = list.filter(g => {
-    const remaining = g.startsAt - now();
-    return remaining > 0; // Timer pas encore expiré
-  });
+  // IMPORTANT: Ne pas filtrer par startsAt - afficher TOUTES les lobbies (en attente ET en cours)
+  // OpenFront affiche les lobbies qui attendent des joueurs et celles avec countdown
 
   if (conf.hideEmpty) list = list.filter(g => g.players > 0);
   if (conf.type && conf.type !== "all") {
