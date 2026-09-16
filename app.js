@@ -257,17 +257,62 @@ async function connect() {
   multiWorkerState.gen = gen;
   
   setStatus("connecting");
-  console.log('[MULTI-WORKER] Connexion aux serveurs OpenFront...');
+  console.log('[MULTI-WORKER] Découverte des serveurs OpenFront via API...');
   
-  // Essaie les serveurs bleu et vert d'OpenFront avec fallback
-  const SERVERS = [
-    { host: 'green.openfront.io', workers: 5 },
-    { host: 'blue.openfront.io', workers: 5 },
-  ];
-  
-  for (const server of SERVERS) {
-    for (let i = 0; i < server.workers; i++) {
-      connectToWorker(i, gen, server.host);
+  try {
+    // Découvre les serveurs disponibles via l'API
+    const clusterResponse = await fetch('https://api.openfront.io/cluster.json?site=openfront.io');
+    if (!clusterResponse.ok) {
+      throw new Error(`API cluster.json failed: ${clusterResponse.status}`);
+    }
+    
+    const cluster = await clusterResponse.json();
+    console.log('[MULTI-WORKER] Cluster découvert:', cluster);
+    
+    // Collecte les serveurs "open"
+    const openServers = [];
+    for (const [letter, serverInfo] of Object.entries(cluster.servers || {})) {
+      if (serverInfo.state === "open") {
+        openServers.push({
+          letter: letter,
+          host: serverInfo.host,
+          numWorkers: serverInfo.numWorkers,
+          version: serverInfo.version,
+        });
+      }
+    }
+    
+    if (openServers.length === 0) {
+      console.warn('[MULTI-WORKER] Aucun serveur "open" trouvé');
+      // Fallback: essaie green et blue
+      openServers.push(
+        { letter: 'd', host: 'green.openfront.io', numWorkers: 20, version: '' },
+        { letter: 'c', host: 'blue.openfront.io', numWorkers: 20, version: '' }
+      );
+    }
+    
+    console.log(`[MULTI-WORKER] ${openServers.length} serveur(s) trouvé(s):`, openServers.map(s => s.host).join(', '));
+    
+    // Se connecte à tous les workers de chaque serveur
+    for (const server of openServers) {
+      const numWorkers = Math.min(server.numWorkers, 5); // Limite à 5 workers par serveur
+      for (let i = 0; i < numWorkers; i++) {
+        connectToWorker(i, gen, server.host);
+      }
+    }
+  } catch (error) {
+    console.error('[MULTI-WORKER] Erreur découverte serveurs:', error);
+    // Fallback vers les serveurs codés en dur
+    console.log('[MULTI-WORKER] Fallback: connexion aux serveurs par défaut');
+    const SERVERS = [
+      { host: 'green.openfront.io', workers: 5 },
+      { host: 'blue.openfront.io', workers: 5 },
+    ];
+    
+    for (const server of SERVERS) {
+      for (let i = 0; i < server.workers; i++) {
+        connectToWorker(i, gen, server.host);
+      }
     }
   }
 }
